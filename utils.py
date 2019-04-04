@@ -6,7 +6,7 @@ from qiime2 import Artifact
 from qiime2.plugins.demux.visualizers import summarize as seq_summ_vis
 from qiime2.plugins.quality_filter.methods import q_score_joined
 from qiime2.plugins.vsearch.methods import join_pairs
-
+from Bio import SeqIO
 
 def write_manifest(indir, opath, r1_format, idpattern):
     template_text = "sample-id,absolute-filepath,direction\n"
@@ -90,16 +90,25 @@ def join_seqs(raw_data,
     joined_qc_eval_vis = seq_summ_vis(joined_qc_seq,
                                       n=n
                                       )
-    joined_qc_df = joined_qc_stats.view(pd.DataFrame)
-
 
     return (joined_seq,
-            joined_seq_eval_vis,
+            joined_seq_eval_vis[0],
             joined_qc_seq,
-            joined_qc_eval_vis,
+            joined_qc_eval_vis[0],
             joined_qc_stats
             )
 
+def mv_seq(seq,opath,name_dict):
+    seq = list(SeqIO.parse(open(seq,'r'),format='fasta'))
+    for i in seq:
+        pre_name = i.description
+        i.id = name_dict[pre_name]
+        i.description = i.name = ''
+    with open(opath,'w') as f1:
+        SeqIO.write(seq,f1,format='fasta')
+
+def save(obj,odir,name):
+    obj.save(os.path.join(odir,name))
 
 if __name__ == '__main__':
     indir = '/home/liaoth/data2/16s/肾衰小鼠/raw_data'
