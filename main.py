@@ -1,6 +1,7 @@
+from default_params import *
 from pp.pipelines import selective_p, tax_assign_qiime2, g_tree
 from utils import *
-from default_params import *
+
 
 def preprocess():
     write_manifest(indir,
@@ -59,7 +60,7 @@ def run_pipelines(p, pipelines_args):
 
     # output part
     tab.save(os.path.join(odir,
-                              profiled_tab_path.format(prefix=p)))
+                          profiled_tab_path.format(prefix=p)))
     p_tab.to_csv(os.path.join(odir,
                               profiled_tab_path.format(prefix=p)),
                  sep='\t' if profiled_tab_path.endswith('.tab') else ',',
@@ -69,7 +70,7 @@ def run_pipelines(p, pipelines_args):
                               representative_sequence_path.format(prefix=p)),
            name_dict=name_dict)
     rep.save(os.path.join(odir,
-                              representative_sequence_path.format(prefix=p)))
+                          representative_sequence_path.format(prefix=p)))
     tab_vis.save(os.path.join(odir,
                               profiled_tab_vis_path.format(prefix=p)))
     seq_vis.save(os.path.join(odir,
@@ -89,17 +90,20 @@ def after_otu(args):
 if __name__ == '__main__':
     from utils import parse_param
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("pipelines", help="Which kinds of pipelines you want to perform. \
                              [deblur|dada2]",
                         type=str, choices=['deblur', 'dada2'])
-    parser.add_argument("--parameter", help="input file contains all parameters, template is place at the %s. This is a python script actually, so just use python code to write your code." % os.path.join(os.path.dirname(os.path.abspath(__file__)),'param.template'),default=os.path.join(os.path.dirname(__file__),'param.template'))
+    parser.add_argument("-p", "--parameter",
+                        help="input file contains all parameters, template is place at the %s. This is a python script actually, so just use python code to write your code." % os.path.join(
+                            os.path.dirname(os.path.abspath(__file__)), 'param.template'), default=os.path.join(os.path.dirname(__file__), 'param.template'))
 
     args = parser.parse_args()
     p = args.pipelines
     parameter_f = args.parameter
 
-    os.makedirs(odir,exist_ok=True)
+    os.makedirs(odir, exist_ok=True)
     parse_param(parameter_f)
     ## 跑命令
     raw_seq, joined_qc_seq = preprocess()
