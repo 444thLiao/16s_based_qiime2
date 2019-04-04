@@ -110,13 +110,17 @@ def mv_seq(seq,opath,name_dict):
 def save(obj,odir,name):
     obj.save(os.path.join(odir,name))
 
-if __name__ == '__main__':
-    indir = '/home/liaoth/data2/16s/肾衰小鼠/raw_data'
-    opath = '/home/liaoth/data2/16s/qiime2_learn/shenshuai_manifest'
-    r1_format = '.*_1.fastq.gz'
-    idpattern = '(.*)_[12].fastq.gz'
+def parse_param(file):
+    with open(file,'r') as f1:
+        exec(f1.read(),globals())
 
-    write_manifest(indir,
-                   opath,
-                   r1_format,
-                   idpattern)
+# if __name__ == '__main__':
+#     indir = '/home/liaoth/data2/16s/肾衰小鼠/raw_data'
+#     opath = '/home/liaoth/data2/16s/qiime2_learn/shenshuai_manifest'
+#     r1_format = '.*_1.fastq.gz'
+#     idpattern = '(.*)_[12].fastq.gz'
+#
+#     write_manifest(indir,
+#                    opath,
+#                    r1_format,
+#                    idpattern)

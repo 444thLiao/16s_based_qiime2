@@ -1,6 +1,6 @@
-from pipelines import selective_p, tax_assign_qiime2, g_tree
+from pp.pipelines import selective_p, tax_assign_qiime2, g_tree
 from utils import *
-
+from default_params import *
 
 def preprocess():
     write_manifest(indir,
@@ -87,88 +87,25 @@ def after_otu(args):
 
 
 if __name__ == '__main__':
-    # 输入
-    indir = '/home/liaoth/data2/16s/qiime2_learn/test_data'
-    r1_format = '.*_1.fastq.gz'
-    idpattern = '(.*)_[12].fastq.gz'
-    metadata = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/metadata.tsv'
-    # metadata = '/home/liaoth/data2/16s/qiime2_learn/meta_11.16.tsv'
+    from utils import parse_param
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pipelines", help="Which kinds of pipelines you want to perform. \
+                             [deblur|dada2]",
+                        type=str, choices=['deblur', 'dada2'])
+    parser.add_argument("--parameter", help="input file contains all parameters, template is place at the %s. This is a python script actually, so just use python code to write your code." % os.path.join(os.path.dirname(os.path.abspath(__file__)),'param.template'),default=os.path.join(os.path.dirname(__file__),'param.template'))
 
-    # 输出
-    odir = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/'
-    opath = os.path.join(odir, 'seq_manifest')
-    ############################################################
-    # 文件名集合
-    raw_seq_vis_path = 'unjoined_seq_eval'
-    joined_seq_vis_path = 'joined_seq_eval'
-    joined_qc_seq_vis_path = 'joined_qc_seq_eval'
-    joined_qc_stats_tab_path = 'joined_qc_stats.csv'
+    args = parser.parse_args()
+    p = args.pipelines
+    parameter_f = args.parameter
 
-    profiled_tab_path = '{prefix}_profiling.tab'
-    profiled_tab_vis_path = '{prefix}_profiling'
-    representative_sequence_path = '{prefix}_rep.fa'
-    representative_sequence_vis_path = '{prefix}_rep'
-    process_stats_path = '{prefix}_profiling_stats.csv'
-
-    root_tree_path = '{prefix}_rep_rooted_tree.tab'
-    tax_tab = '{prefix}_rep_sintax.tab'
-
-    # 序列评估 可视化部分参数
-    n = 10000
-    # join 部分参数
-    minlen = 100
-    allowmergestagger = True
-    minovlen = 10
-    maxdiffs = 10
-    # join 序列评估
-    min_quality = 4  # default
-    quality_window = 3  # default
-    min_length_fraction = 0.75  # default
-    max_ambiguous = 0  # default
-
-    pipelines_args = dict(
-        # dada2
-        trunc_len_f=140,
-        trunc_len_r=150,
-        n_threads=0,  # all threads
-        trunc_q=2,  # default
-        n_reads_learn=1000000,  # default
-        max_ee=2.0,  # default
-
-        # deblur
-        trim_length=250,
-        sample_stats=True,
-        mean_error=0.005,  # default
-        indel_prob=0.01,  # default
-        indel_max=3,  # default
-        min_reads=10,  # default
-        min_size=2,  # default
-        jobs_to_start=7,
-        hashed_feature_ids=True,  # default
-
-        # vsearch-otu
-
-    )
-    ## after profiling
-    # after_otu_args = dict(
-    #     # classify
-    #     classifier_pth='/home/liaoth/data2/gg-13-8-99-nb-classifier.qza',
-    #     n_jobs=-2,
-    #     confidence=-1,
-    #     read_orientation=None,
-    #     # mafft tree
-    #     n_threads=0,
-    #     mask_max_gap_frequency=1.0,
-    #     mask_min_conservation=0.4,
-    # )
+    os.makedirs(odir,exist_ok=True)
+    parse_param(parameter_f)
     ## 跑命令
     raw_seq, joined_qc_seq = preprocess()
     print("预处理完成,完成原始序列评估 与 joined, 去污染,去chimera,fix orientation")
     pipelines_args['deblur_input'] = joined_qc_seq
     pipelines_args['dada2_input'] = raw_seq
-
-    p = 'dada2'
     tab, p_tab, rep = run_pipelines(p, pipelines_args)
     # after_otu_args['rep'] = rep
-
     # after_otu(after_otu_args)

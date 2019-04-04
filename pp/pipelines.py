@@ -4,8 +4,8 @@ from qiime2.plugins.feature_table.visualizers import summarize as ft_vis
 from qiime2.plugins.feature_table.visualizers import tabulate_seqs as ft_tabseq
 from qiime2.plugins.phylogeny.pipelines import align_to_tree_mafft_fasttree
 
-from dada2_pipelines import dada2_pipelines
-from deblur_pipelines import deblur_pipelines
+from pp.dada2_pipelines import dada2_pipelines
+from pp.deblur_pipelines import deblur_pipelines
 from utils import *
 
 
