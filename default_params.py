@@ -1,11 +1,13 @@
 # 输入
 import os
+
 _p = os.path.abspath(__file__)
 _p_dir = os.path.dirname(_p)
-indir = os.path.join(_p_dir,'test','seq_data')
+indir = os.path.join(_p_dir, 'test', 'seq_data')
 r1_format = '.*.1.fastq.gz'
+r2_format = '.*.2.fastq.gz'
 idpattern = '(.*).[12].fastq.gz'
-metadata = os.path.join(_p_dir,'metadata.tsv')
+metadata = os.path.join(_p_dir, 'metadata.tsv')
 
 # 输出
 odir = '/tmp/test_result'
@@ -27,6 +29,18 @@ process_stats_path = '{prefix}_profiling_stats.csv'
 root_tree_path = '{prefix}_rep_rooted_tree.tab'
 tax_tab = '{prefix}_rep_sintax.tab'
 
+############################################################
+# demux部分
+demux_on = False
+demux_dict = dict(
+    metadata_file=os.path.join(_p_dir, 'test', 'metadata.tab'),
+    id_col='SampleID',
+    fb_col='Forward_Barcode',
+    rb_col='Reverse_Barcode',
+    fp_col='Forward_Primer',
+    rp_col='Reverse_Primer',
+
+)
 # 序列评估 可视化部分参数
 n = 10000
 # join 部分参数

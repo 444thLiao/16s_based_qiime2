@@ -1,21 +1,51 @@
 import os
-import re
+import re,csv
 from glob import glob
 import pandas as pd
 from qiime2 import Artifact
 from qiime2.plugins.demux.visualizers import summarize as seq_summ_vis
 from qiime2.plugins.quality_filter.methods import q_score_joined
 from qiime2.plugins.vsearch.methods import join_pairs
-from Bio import SeqIO
+from skbio.io import read, write
 
-def write_manifest(indir, opath, r1_format, idpattern):
+
+def data_parser(path, ft='csv', **kwargs):
+    if type(path) != str and ft != 'metadatas':
+        df = path.copy()
+        if type(df) != pd.DataFrame:
+            df = pd.DataFrame(df)
+    else:
+        if ft == 'csv':
+            sniffer = csv.Sniffer()
+            sniffer.preferred = [',', '\t', '|']
+            dialect = sniffer.sniff(open(path, 'r').readline().strip('\n'))
+            df = pd.read_csv(path, sep=dialect.delimiter, header=0, low_memory =False,**kwargs)
+            # low_memory is important for sample name look like float and str. it may mistaken the sample name into some float.
+        else:
+            df = pd.read_excel(path, header=0, **kwargs)
+
+    return df
+
+def get_files(indir,p):
+    f_pattern = '*.' + p.rpartition('.')[2]
+    files = glob(os.path.join(indir, f_pattern), recursive=True)
+    return files
+
+
+def write_manifest(indir, opath, r1_format,r2_format, idpattern):
     template_text = "sample-id,absolute-filepath,direction\n"
-    f_pattern = '*.gz'
 
-    for fp in glob(os.path.join(indir, f_pattern), recursive=True):
+    r1_files = get_files(indir,r1_format)
+    r2_files = get_files(indir,r2_format)
+    for fp in r1_files:
         textid = re.findall(idpattern, os.path.basename(fp))[0]
         path = fp
-        direction = 'forward' if re.match(r1_format, fp) else 'reverse'
+        direction = 'forward'
+        template_text += ','.join([textid, path, direction]) + '\n'
+    for fp in r2_files:
+        textid = re.findall(idpattern, os.path.basename(fp))[0]
+        path = fp
+        direction = 'reverse'
         template_text += ','.join([textid, path, direction]) + '\n'
 
     with open(opath, 'w') as f1:
@@ -98,21 +128,24 @@ def join_seqs(raw_data,
             joined_qc_stats
             )
 
-def mv_seq(seq,opath,name_dict):
-    seq = list(SeqIO.parse(open(seq,'r'),format='fasta'))
-    for i in seq:
-        pre_name = i.description
-        i.id = name_dict[pre_name]
-        i.description = i.name = ''
-    with open(opath,'w') as f1:
-        SeqIO.write(seq,f1,format='fasta')
 
-def save(obj,odir,name):
-    obj.save(os.path.join(odir,name))
+def mv_seq(seq, opath, name_dict):
+    seq = read(seq, format='fasta')
+    with open(opath, 'w') as f1:
+        for i in seq:
+            pre_name = i.metadata['id']
+            i.metadata['id'] = name_dict[pre_name]
+            i.metadata['description'] = ''
+            write(i, 'fasta', f1)
+
+
+def save(obj, odir, name):
+    obj.save(os.path.join(odir, name))
+
 
 def parse_param(file):
-    with open(file,'r') as f1:
-        exec(f1.read(),globals())
+    with open(file, 'r') as f1:
+        exec(f1.read(), globals())
 
 # if __name__ == '__main__':
 #     indir = '/home/liaoth/data2/16s/肾衰小鼠/raw_data'

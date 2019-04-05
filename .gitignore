@@ -13,7 +13,6 @@ __pycache__/
 # FGFP_metadata_ready.tsv
 check_doc_code.py
 temp-plot.html
-test/
 deblur.log
 
 # C extensions
