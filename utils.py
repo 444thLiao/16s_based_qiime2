@@ -1,6 +1,7 @@
+import csv
 import os
-import re,csv
 from glob import glob
+
 import pandas as pd
 from qiime2 import Artifact
 from qiime2.plugins.demux.visualizers import summarize as seq_summ_vis
@@ -19,37 +20,30 @@ def data_parser(path, ft='csv', **kwargs):
             sniffer = csv.Sniffer()
             sniffer.preferred = [',', '\t', '|']
             dialect = sniffer.sniff(open(path, 'r').readline().strip('\n'))
-            df = pd.read_csv(path, sep=dialect.delimiter, header=0, low_memory =False,**kwargs)
+            df = pd.read_csv(path, sep=dialect.delimiter, header=0, low_memory=False, **kwargs)
             # low_memory is important for sample name look like float and str. it may mistaken the sample name into some float.
         else:
             df = pd.read_excel(path, header=0, **kwargs)
 
     return df
 
-def get_files(indir,p):
-    f_pattern = '*.' + p.rpartition('.')[2]
+
+def get_files(indir, p):
+    f_pattern = p.strip('.')
     files = glob(os.path.join(indir, f_pattern), recursive=True)
-    return files
+    return list(sorted(files))
 
 
-def write_manifest(indir, opath, r1_format,r2_format, idpattern):
+def write_manifest(opath, r1_files, r2_files, ids):
+    os.makedirs(os.path.dirname(os.path.abspath(opath)), exist_ok=True)
+
     template_text = "sample-id,absolute-filepath,direction\n"
-
-    r1_files = get_files(indir,r1_format)
-    r2_files = get_files(indir,r2_format)
-    for fp in r1_files:
-        textid = re.findall(idpattern, os.path.basename(fp))[0]
-        path = fp
-        direction = 'forward'
-        template_text += ','.join([textid, path, direction]) + '\n'
-    for fp in r2_files:
-        textid = re.findall(idpattern, os.path.basename(fp))[0]
-        path = fp
-        direction = 'reverse'
-        template_text += ','.join([textid, path, direction]) + '\n'
-
+    for r1, r2, sid in zip(r1_files, r2_files, ids):
+        template_text += ','.join([sid, r1, 'forward']) + '\n'
+        template_text += ','.join([sid, r2, 'reverse']) + '\n'
     with open(opath, 'w') as f1:
         f1.write(template_text)
+    return opath
 
 
 def import_data_with_manifest(manifest):
@@ -82,8 +76,12 @@ def load_classifier(c_path):
 
 def seq_eval(seq_data,
              n=10000):
-    raw_seq_eval_vis = seq_summ_vis(seq_data,
-                                    n=n)
+    try:
+        raw_seq_eval_vis = seq_summ_vis(seq_data,
+                                        n=n)
+    except:
+        import pdb;
+        pdb.set_trace()
     # 可视化原始数据的质量评估,未joined,n为随机不放回采样的reads数量
     raw_seq_eval_vis = raw_seq_eval_vis[0]
 
@@ -143,9 +141,9 @@ def save(obj, odir, name):
     obj.save(os.path.join(odir, name))
 
 
-def parse_param(file):
+def parse_param(file, g):
     with open(file, 'r') as f1:
-        exec(f1.read(), globals())
+        exec(f1.read(), g)
 
 # if __name__ == '__main__':
 #     indir = '/home/liaoth/data2/16s/肾衰小鼠/raw_data'

@@ -4,17 +4,16 @@ import os
 _p = os.path.abspath(__file__)
 _p_dir = os.path.dirname(_p)
 indir = os.path.join(_p_dir, 'test', 'seq_data')
-r1_format = '.*.1.fastq.gz'
-r2_format = '.*.2.fastq.gz'
+r1_format = '.*_1.fastq.gz'
+r2_format = '.*_2.fastq.gz'
 idpattern = '(.*).[12].fastq.gz'
-metadata = os.path.join(_p_dir, 'metadata.tsv')
 
 # 输出
 odir = '/tmp/test_result'
 opath = '/tmp/test_result/seq_manifest'
 
 ############################################################
-# 文件名集合
+# 输出文件名集合
 raw_seq_vis_path = 'unjoined_seq_eval'
 joined_seq_vis_path = 'joined_seq_eval'
 joined_qc_seq_vis_path = 'joined_qc_seq_eval'
@@ -29,18 +28,25 @@ process_stats_path = '{prefix}_profiling_stats.csv'
 root_tree_path = '{prefix}_rep_rooted_tree.tab'
 tax_tab = '{prefix}_rep_sintax.tab'
 
+demux_dir_pre = os.path.join(odir, 'demux','pre')
+demux_dir_samples = os.path.join(odir, 'demux','samples')
+demux_stats = os.path.join(demux_dir_pre,'..', 'stats.csv')
 ############################################################
 # demux部分
 demux_on = False
+not_overwrite_demux = True
 demux_dict = dict(
-    metadata_file=os.path.join(_p_dir, 'test', 'metadata.tab'),
+    metadata=os.path.join(_p_dir, 'test', 'metadata.tab'),
     id_col='SampleID',
     fb_col='Forward_Barcode',
     rb_col='Reverse_Barcode',
     fp_col='Forward_Primer',
     rp_col='Reverse_Primer',
-
+    attempt_read_orientation=True,
+    output_dir_pre=demux_dir_pre,
+    output_dir_samples=demux_dir_samples
 )
+
 # 序列评估 可视化部分参数
 n = 10000
 # join 部分参数
