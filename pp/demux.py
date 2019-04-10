@@ -3,8 +3,8 @@ import re
 
 from Bio import SeqIO
 from tqdm import tqdm
+
 from default_params import *
-from glob import glob
 from utils import data_parser
 
 
@@ -185,6 +185,22 @@ def demux_files(seqfile1,
                 not_overwrite_demux=False,
                 attempt_read_orientation=False
                 ):
+    """
+    对单个的序列文件,进行分库,并且输出到output_dir,保持名称不变(不进行压缩)
+    因为对于qiime2而言,这只是个中间文件.
+    分库的结果只会标记到每个read的head中,而不会生成sample为单位的序列文件
+    :param str seqfile1:
+    :param str seqfile2:
+    :param list fp:
+    :param list rp:
+    :param list ids:
+    :param list bc:
+    :param int length_bc:
+    :param str output_dir:
+    :param bool not_overwrite_demux:
+    :param bool attempt_read_orientation:
+    :return:
+    """
     bc2id = dict(zip(bc, ids))
     if len(set(bc)) != len(set(ids)):
         raise Exception("same barcode corresponding multiple ids.")
@@ -250,6 +266,14 @@ def demux_files(seqfile1,
 
 
 def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples):
+    """
+    将多个demux_files输出的结果,根据每个read前面的id,生成到以sample为单位的序列文件中
+    :param list seqfile1:
+    :param list seqfile2:
+    :param str output_dir_pre:
+    :param str output_dir_samples:
+    :return:
+    """
     for f1, f2 in zip(seqfile1, seqfile2):
         nf1 = os.path.join(output_dir_pre, os.path.basename(f1).strip('.gz'))
         nf2 = os.path.join(output_dir_pre, os.path.basename(f2).strip('.gz'))
@@ -271,9 +295,9 @@ def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples):
             SeqIO.write(read2, stream2, format='fastq')
 
     f1_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
-                                             '*_1.fastq')) if _ not in seqfile1])
+                                                    '*_1.fastq')) if _ not in seqfile1])
     f2_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
-                                             '*_2.fastq')) if _ not in seqfile2])
+                                                    '*_2.fastq')) if _ not in seqfile2])
     ids = [str(os.path.basename(_)).split('_1')[0] for _ in f1_files]
     return f1_files, f2_files, ids
 
@@ -329,14 +353,16 @@ def main(metadata,
                                 attempt_read_orientation=attempt_read_orientation)
             file_stats[str(os.path.basename(seq1)).partition('_1')[0]] = stats
         print("Start separating reads into multiple sampels fastq......")
-        f1_files, f2_files,ids = split_into_files(seqfile1=seqfile1,
-                                              seqfile2=seqfile2,
-                                              output_dir_pre=output_dir_pre,
-                                              output_dir_samples=output_dir_samples)
+        f1_files, f2_files, ids = split_into_files(seqfile1=seqfile1,
+                                                   seqfile2=seqfile2,
+                                                   output_dir_pre=output_dir_pre,
+                                                   output_dir_samples=output_dir_samples)
     else:
+        # 多种barcode长度,忽略吧...
         ## 还不知道该咋办...不应该的说
         pass
-    return f1_files, f2_files,ids, file_stats
+
+    return f1_files, f2_files, ids, file_stats
 
 
 if __name__ == '__main__':
@@ -351,20 +377,20 @@ if __name__ == '__main__':
     rb_col = 'Reverse_Barcode'
     fp_col = 'Forward_Primer'
     rp_col = 'Reverse_Primer'
-    seqfile1, seqfile2 = glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_1.fastq.gz'), \
-                         glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz')
-
-    stats = main(metadata=metadata,
-                 id_col=id_col,
-                 rb_col=rb_col,
-                 fb_col=fb_col,
-                 rp_col=rp_col,
-                 fp_col=fp_col,
-                 seqfile1=seqfile1,
-                 seqfile2=seqfile2,
-                 output_dir_pre='/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_demux/',
-                 output_dir_samples='/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_samples/',
-                 attempt_read_orientation=True)
+    seqfile1, seqfile2 = sorted(glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_1.fastq.gz')), \
+                         sorted(glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz'))
+    # the order of glob output is random, be careful !!!!!!!!!!!!!!!!!!!!!!!!1
+    f1_files, f2_files, ids, stats = main(metadata=metadata,
+                                          id_col=id_col,
+                                          rb_col=rb_col,
+                                          fb_col=fb_col,
+                                          rp_col=rp_col,
+                                          fp_col=fp_col,
+                                          seqfile1=seqfile1,
+                                          seqfile2=seqfile2,
+                                          output_dir_pre='/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_demux/',
+                                          output_dir_samples='/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_samples/',
+                                          attempt_read_orientation=True)
     for f, s in sorted(stats.items(), key=lambda x: x[0]):
         print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.keys()))
         print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.values()))

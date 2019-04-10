@@ -68,7 +68,6 @@ pipelines_args = dict(
     trunc_q=2,  # default
     n_reads_learn=1000000,  # default
     max_ee=2.0,  # default
-
     # deblur
     trim_length=250,
     sample_stats=True,
@@ -79,7 +78,6 @@ pipelines_args = dict(
     min_size=2,  # default
     jobs_to_start=7,
     hashed_feature_ids=True,  # default
-
     # vsearch-otu
 
 )

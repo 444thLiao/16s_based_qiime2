@@ -16,7 +16,6 @@ def preprocess(indir):
         demux_dict['seqfile2'] = r2_files
         if not_overwrite_demux and os.path.isfile(demux_stats):
             print('demuxed files exist, pass it')
-
         else:
             r1_files,r2_files,ids,stats = demux_main(**demux_dict)
             stats_df = pd.DataFrame.from_dict(stats, orient='index')
@@ -38,21 +37,19 @@ def preprocess(indir):
                                 n=n)
     raw_seq_eval_vis.save(os.path.join(odir,
                                        raw_seq_vis_path))
-    try:
-        joined_seq, joined_seq_eval_vis, \
-        joined_qc_seq, joined_qc_eval_vis, joined_qc_stats = join_seqs(raw_seq,
-                                                                       minlen=minlen,
-                                                                       allowmergestagger=allowmergestagger,
-                                                                       minovlen=minovlen,  # default
-                                                                       maxdiffs=maxdiffs,  # default
-                                                                       n=n,
-                                                                       min_quality=min_quality,
-                                                                       quality_window=quality_window,
-                                                                       min_length_fraction=min_length_fraction,
-                                                                       max_ambiguous=max_ambiguous,
-                                                                       )
-    except:
-        import pdb;pdb.set_trace()
+
+    joined_seq, joined_seq_eval_vis, \
+    joined_qc_seq, joined_qc_eval_vis, joined_qc_stats = join_seqs(raw_seq,
+                                                                   minlen=minlen,
+                                                                   allowmergestagger=allowmergestagger,
+                                                                   minovlen=minovlen,  # default
+                                                                   maxdiffs=maxdiffs,  # default
+                                                                   n=n,
+                                                                   min_quality=min_quality,
+                                                                   quality_window=quality_window,
+                                                                   min_length_fraction=min_length_fraction,
+                                                                   max_ambiguous=max_ambiguous,
+                                                                   )
     raw_seq.save(os.path.join(odir, 'raw_data'))
     joined_qc_seq.save(os.path.join(odir,
                                     joined_seq_vis_path))

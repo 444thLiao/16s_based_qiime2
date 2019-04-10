@@ -16,6 +16,7 @@ def selective_p(p, args):
 
         return
     elif p == 'dada2':
+        print("Perform dada2 pipelines.....")
         tab, rep, stats = dada2_pipelines(**args)
         dada2_tab_vis = ft_vis(tab)[0]
         dada2_seq_vis = ft_tabseq(rep)[0]
@@ -28,6 +29,7 @@ def selective_p(p, args):
         return tab, rep, dada2_tab_vis, dada2_seq_vis, dada2_stats_df
 
     elif p == 'deblur':
+        print("Perform deblur pipelines.....")
         tab, rep, stats = deblur_pipelines(**args)
         deblur_tab_vis = ft_vis(tab)[0]
         deblur_seq_vis = ft_tabseq(rep)[0]
