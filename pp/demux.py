@@ -287,6 +287,11 @@ def _split(f1, f2, output_dir_pre, output_dir_samples):
         SeqIO.write(read2, stream2, format='fastq')
 
 
+
+def cal(args):
+    func, args = args
+    return func(*args)
+
 def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num_thread):
     """
     将多个demux_files输出的结果,根据每个read前面的id,生成到以sample为单位的序列文件中
@@ -308,9 +313,6 @@ def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num
     return f1_files, f2_files, ids
 
 
-def cal(args):
-    func, args = args
-    return func(*args)
 
 
 def main(metadata,
@@ -366,17 +368,6 @@ def main(metadata,
         results = assign_work_pool(cal, all_args, num_thread=num_thread)
         for name, stats in results:
             file_stats[name] = stats
-        # for seq1, seq2 in zip(seqfile1, seqfile2):
-        #     stats = demux_files(seqfile1=seq1,
-        #                         seqfile2=seq2,
-        #                         fp=fp,
-        #                         rp=rp,
-        #                         ids=ids,
-        #                         bc=bc,
-        #                         length_bc=length_bc,
-        #                         output_dir=output_dir_pre,
-        #                         not_overwrite_demux=not_overwrite_demux,
-        #                         attempt_read_orientation=attempt_read_orientation)
 
         print("Start separating reads into multiple sampels fastq......")
         f1_files, f2_files, ids = split_into_files(seqfile1=seqfile1,
