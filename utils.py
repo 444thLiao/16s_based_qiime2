@@ -1,6 +1,7 @@
 import csv
 import os
 from glob import glob
+from multiprocessing import Pool, Manager, cpu_count
 
 import pandas as pd
 from qiime2 import Artifact
@@ -8,6 +9,7 @@ from qiime2.plugins.demux.visualizers import summarize as seq_summ_vis
 from qiime2.plugins.quality_filter.methods import q_score_joined
 from qiime2.plugins.vsearch.methods import join_pairs
 from skbio.io import read, write
+from tqdm import tqdm
 
 
 def data_parser(path, ft='csv', **kwargs):
@@ -144,6 +146,16 @@ def save(obj, odir, name):
 def parse_param(file, g):
     with open(file, 'r') as f1:
         exec(f1.read(), g)
+
+
+def assign_work_pool(func, differ_args, num_thread):
+    if num_thread == 0:
+        # if number of thread equal to 0, then use all threads of computer.
+        num_thread = cpu_count()
+    with Pool(processes=num_thread) as pool:
+        results = list(tqdm(pool.imap(func, differ_args), total=len(differ_args)))
+
+    return results
 
 # if __name__ == '__main__':
 #     indir = '/home/liaoth/data2/16s/肾衰小鼠/raw_data'

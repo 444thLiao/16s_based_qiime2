@@ -5,7 +5,7 @@ from Bio import SeqIO
 from tqdm import tqdm
 
 from default_params import *
-from utils import data_parser
+from utils import data_parser, assign_work_pool
 
 
 def p_sto(col, stodge, is_id=False):
@@ -262,10 +262,32 @@ def demux_files(seqfile1,
     else:
         # 不想写....
         process_single()
-    return stats
+    name = str(os.path.basename(name_of_input1)).partition('_1')[0]
+    return name, stats
 
 
-def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples):
+def _split(f1, f2, output_dir_pre, output_dir_samples):
+    nf1 = os.path.join(output_dir_pre, os.path.basename(f1).strip('.gz'))
+    nf2 = os.path.join(output_dir_pre, os.path.basename(f2).strip('.gz'))
+
+    seqfile1_stream = open(nf1, 'r')
+    seqfile2_stream = open(nf2, 'r')
+    for read1, read2 in tqdm(zip(SeqIO.parse(seqfile1_stream, format='fastq'),
+                                 SeqIO.parse(seqfile2_stream, format='fastq'))):
+        sid = read1.id
+        id_f1 = os.path.join(output_dir_samples, '%s_1.fastq' % sid)
+        id_f2 = os.path.join(output_dir_samples, '%s_2.fastq' % sid)
+        if not os.path.isfile(id_f1):
+            stream1 = open(id_f1, 'w')
+            stream2 = open(id_f2, 'w')
+        else:
+            stream1 = open(id_f1, 'a')
+            stream2 = open(id_f2, 'a')
+        SeqIO.write(read1, stream1, format='fastq')
+        SeqIO.write(read2, stream2, format='fastq')
+
+
+def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num_thread):
     """
     将多个demux_files输出的结果,根据每个read前面的id,生成到以sample为单位的序列文件中
     :param list seqfile1:
@@ -274,25 +296,9 @@ def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples):
     :param str output_dir_samples:
     :return:
     """
-    for f1, f2 in zip(seqfile1, seqfile2):
-        nf1 = os.path.join(output_dir_pre, os.path.basename(f1).strip('.gz'))
-        nf2 = os.path.join(output_dir_pre, os.path.basename(f2).strip('.gz'))
+    all_args = [(_split, (f1, f2, output_dir_pre, output_dir_samples)) for f1, f2 in zip(seqfile1, seqfile2)]
 
-        seqfile1_stream = open(nf1, 'r')
-        seqfile2_stream = open(nf2, 'r')
-        for read1, read2 in tqdm(zip(SeqIO.parse(seqfile1_stream, format='fastq'),
-                                     SeqIO.parse(seqfile2_stream, format='fastq'))):
-            sid = read1.id
-            id_f1 = os.path.join(output_dir_samples, '%s_1.fastq' % sid)
-            id_f2 = os.path.join(output_dir_samples, '%s_2.fastq' % sid)
-            if not os.path.isfile(id_f1):
-                stream1 = open(id_f1, 'w')
-                stream2 = open(id_f2, 'w')
-            else:
-                stream1 = open(id_f1, 'a')
-                stream2 = open(id_f2, 'a')
-            SeqIO.write(read1, stream1, format='fastq')
-            SeqIO.write(read2, stream2, format='fastq')
+    assign_work_pool(cal, all_args, num_thread=num_thread)
 
     f1_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
                                                     '*_1.fastq')) if _ not in seqfile1])
@@ -302,18 +308,24 @@ def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples):
     return f1_files, f2_files, ids
 
 
+def cal(args):
+    func, args = args
+    return func(*args)
+
+
 def main(metadata,
          id_col='',
          fb_col='',
          rb_col='',
          fp_col='',
          rp_col='',
-         seqfile1='',
-         seqfile2='',
+         seqfile1=(),
+         seqfile2=(),
          output_dir_pre=None,
          output_dir_samples=None,
          not_overwrite_demux=False,
-         attempt_read_orientation=False
+         attempt_read_orientation=False,
+         num_thread=0
          ):
     ids, fb, rb, fp, rp = parse_metadata(metadata,
                                          id_col=id_col,
@@ -340,23 +352,37 @@ def main(metadata,
             bc = [p1.pattern + p2.pattern for p1, p2 in zip(fb, rb)]
         else:
             bc = [p1.pattern for p1 in fb]
-        for seq1, seq2 in zip(seqfile1, seqfile2):
-            stats = demux_files(seqfile1=seq1,
-                                seqfile2=seq2,
-                                fp=fp,
-                                rp=rp,
-                                ids=ids,
-                                bc=bc,
-                                length_bc=length_bc,
-                                output_dir=output_dir_pre,
-                                not_overwrite_demux=not_overwrite_demux,
-                                attempt_read_orientation=attempt_read_orientation)
-            file_stats[str(os.path.basename(seq1)).partition('_1')[0]] = stats
+        all_args = [(demux_files, (seq1,
+                                   seq2,
+                                   fp,
+                                   rp,
+                                   ids,
+                                   bc,
+                                   length_bc,
+                                   output_dir_pre,
+                                   not_overwrite_demux,
+                                   attempt_read_orientation)) for seq1, seq2 in zip(seqfile1, seqfile2)]
+
+        results = assign_work_pool(cal, all_args, num_thread=num_thread)
+        for name, stats in results:
+            file_stats[name] = stats
+        # for seq1, seq2 in zip(seqfile1, seqfile2):
+        #     stats = demux_files(seqfile1=seq1,
+        #                         seqfile2=seq2,
+        #                         fp=fp,
+        #                         rp=rp,
+        #                         ids=ids,
+        #                         bc=bc,
+        #                         length_bc=length_bc,
+        #                         output_dir=output_dir_pre,
+        #                         not_overwrite_demux=not_overwrite_demux,
+        #                         attempt_read_orientation=attempt_read_orientation)
+
         print("Start separating reads into multiple sampels fastq......")
         f1_files, f2_files, ids = split_into_files(seqfile1=seqfile1,
                                                    seqfile2=seqfile2,
                                                    output_dir_pre=output_dir_pre,
-                                                   output_dir_samples=output_dir_samples)
+                                                   output_dir_samples=output_dir_samples, num_thread=num_thread)
     else:
         # 多种barcode长度,忽略吧...
         ## 还不知道该咋办...不应该的说
@@ -394,6 +420,7 @@ if __name__ == '__main__':
     for f, s in sorted(stats.items(), key=lambda x: x[0]):
         print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.keys()))
         print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.values()))
+
     ## performance analysis
     ## ~5000 read per second per file
 
