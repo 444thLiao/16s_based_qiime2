@@ -28,9 +28,9 @@ process_stats_path = '{prefix}_profiling_stats.csv'
 root_tree_path = '{prefix}_rep_rooted_tree.tab'
 tax_tab = '{prefix}_rep_sintax.tab'
 
-demux_dir_pre = os.path.join(odir, 'demux','pre')
-demux_dir_samples = os.path.join(odir, 'demux','samples')
-demux_stats = os.path.join(demux_dir_pre,'..', 'stats.csv')
+demux_dir_pre = os.path.join(odir, 'demux', 'pre')
+demux_dir_samples = os.path.join(odir, 'demux', 'samples')
+demux_stats = os.path.join(demux_dir_pre, '..', 'stats.csv')
 ############################################################
 # demux部分
 demux_on = False
@@ -44,7 +44,8 @@ demux_dict = dict(
     rp_col='Reverse_Primer',
     attempt_read_orientation=True,
     output_dir_pre=demux_dir_pre,
-    output_dir_samples=demux_dir_samples
+    output_dir_samples=demux_dir_samples,
+    num_thread=0  # all threads
 )
 
 # 序列评估 可视化部分参数

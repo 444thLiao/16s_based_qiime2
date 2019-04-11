@@ -44,7 +44,8 @@ demux_dict = dict(
     rp_col='Reverse_Primer',
     attempt_read_orientation=True,
     output_dir_pre=demux_dir_pre,
-    output_dir_samples=demux_dir_samples
+    output_dir_samples=demux_dir_samples,
+    num_thread=0  # all threads
 )
 # 序列评估 可视化部分参数
 n = 10000

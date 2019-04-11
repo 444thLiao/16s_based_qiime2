@@ -9,8 +9,6 @@ indir = '/home/liaoth/data2/16s/qiime2_learn/test_data'
 r1_format = '.*_1.fastq.gz'
 r2_format = '.*.2.fastq.gz'
 idpattern = '(.*)_[12].fastq.gz'
-metadata = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/metadata.tsv'
-# metadata = '/home/liaoth/data2/16s/qiime2_learn/meta_11.16.tsv'
 
 # 输出
 odir = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/'
@@ -36,15 +34,18 @@ demux_stats = os.path.join(demux_dir, 'stats.csv')
 ############################################################
 # demux部分
 demux_on = False
+not_overwrite_demux = True
 demux_dict = dict(
-    metadata_file=os.path.join(_p_dir, 'test', 'metadata.tab'),
+    metadata=os.path.join(_p_dir, 'test', 'metadata.tab'),
     id_col='SampleID',
     fb_col='Forward_Barcode',
     rb_col='Reverse_Barcode',
     fp_col='Forward_Primer',
     rp_col='Reverse_Primer',
     attempt_read_orientation=True,
-    output_dir=demux_dir
+    output_dir_pre=demux_dir_pre,
+    output_dir_samples=demux_dir_samples,
+    num_thread=0  # all threads
 )
 # 序列评估 可视化部分参数
 n = 10000
