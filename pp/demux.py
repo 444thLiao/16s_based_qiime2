@@ -3,7 +3,7 @@ import re
 
 from Bio import SeqIO
 from tqdm import tqdm
-
+from glob import glob
 from default_params import *
 from utils import data_parser, assign_work_pool
 
@@ -287,10 +287,10 @@ def _split(f1, f2, output_dir_pre, output_dir_samples):
         SeqIO.write(read2, stream2, format='fastq')
 
 
-
 def cal(args):
     func, args = args
     return func(*args)
+
 
 def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num_thread):
     """
@@ -311,8 +311,6 @@ def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num
                                                     '*_2.fastq')) if _ not in seqfile2])
     ids = [str(os.path.basename(_)).split('_1')[0] for _ in f1_files]
     return f1_files, f2_files, ids
-
-
 
 
 def main(metadata,
@@ -384,7 +382,7 @@ def main(metadata,
 
 if __name__ == '__main__':
     # path = os.path.abspath(__file__)
-    from glob import glob
+
 
     path = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/pp/demux.py'
 
