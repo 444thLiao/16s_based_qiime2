@@ -1,14 +1,16 @@
-from default_params import *
-from pp.pipelines import selective_p, tax_assign_qiime2, g_tree
-from pp.demux import main as demux_main
 import re
+import string
+
+from default_params import *
+from pp.demux import main as demux_main
+from pp.pipelines import selective_p, tax_assign_qiime2, g_tree
 from utils import *
 
 
 def preprocess(indir):
     r1_files = sorted(get_files(indir, r1_format))
     r2_files = sorted(get_files(indir, r2_format))
-    ids = [re.findall(idpattern, os.path.basename(_))[0] for _ in r1_files]
+    ids = [re.findall(idpattern, os.path.basename(_))[0].strip(string.punctuation) for _ in r1_files]
 
     if demux_on:
         print("Demux is on, first start the demultiplexing process.")
@@ -17,17 +19,17 @@ def preprocess(indir):
         if not_overwrite_demux and os.path.isfile(demux_stats):
             print('demuxed files exist, pass it')
         else:
-            r1_files,r2_files,ids,stats = demux_main(**demux_dict)
+            r1_files, r2_files, ids, stats = demux_main(**demux_dict)
             stats_df = pd.DataFrame.from_dict(stats, orient='index')
             stats_df.loc[:, 'remaining reads/%'] = stats_df.loc[:, "remaining reads"] / stats_df.iloc[:, 1:4].sum(1)
-            stats_df.to_csv(demux_stats,index=True)
-        print("demultiplexing has been complete, indir will change to",demux_dir_samples)
+            stats_df.to_csv(demux_stats, index=True)
+        print("demultiplexing has been complete, indir will change to", demux_dir_samples)
 
     if not os.path.isfile(opath):
         write_manifest(opath=opath,
-                   ids=ids,
-                   r1_files=r1_files,
-                   r2_files=r2_files,)
+                       ids=ids,
+                       r1_files=r1_files,
+                       r2_files=r2_files, )
     print("manifest has been output to", opath)
     # 准备序列的输入
     raw_seq = import_data_with_manifest(opath)
@@ -38,29 +40,26 @@ def preprocess(indir):
     raw_seq_eval_vis.save(os.path.join(odir,
                                        raw_seq_vis_path))
 
+    join_params.update(qc_joined_params)
+    join_params['raw_seq'] = raw_seq
+    join_params['n'] = n
     joined_seq, joined_seq_eval_vis, \
     joined_qc_seq, joined_qc_eval_vis, joined_qc_stats = join_seqs(raw_seq,
-                                                                   minlen=minlen,
-                                                                   allowmergestagger=allowmergestagger,
-                                                                   minovlen=minovlen,  # default
-                                                                   maxdiffs=maxdiffs,  # default
-                                                                   n=n,
-                                                                   min_quality=min_quality,
-                                                                   quality_window=quality_window,
-                                                                   min_length_fraction=min_length_fraction,
-                                                                   max_ambiguous=max_ambiguous,
+                                                                   **join_params
                                                                    )
-    raw_seq.save(os.path.join(odir, 'raw_data'))
-    joined_qc_seq.save(os.path.join(odir,
-                                    joined_seq_vis_path))
-    joined_qc_eval_vis.save(os.path.join(odir,
+    os.makedirs(os.path.join(odir, 'preprocess'), exist_ok=True)
+    raw_seq.save(os.path.join(odir, 'preprocess',
+                              raw_seq_path))
+    joined_qc_seq.save(os.path.join(odir, 'preprocess',
+                                    joined_seq_path))
+    joined_qc_eval_vis.save(os.path.join(odir, 'preprocess',
                                          joined_qc_seq_vis_path))
-    joined_seq.save(os.path.join(odir,
+    joined_seq.save(os.path.join(odir, 'preprocess',
                                  joined_qc_seq_vis_path))
-    joined_seq_eval_vis.save(os.path.join(odir,
+    joined_seq_eval_vis.save(os.path.join(odir, 'preprocess',
                                           joined_seq_vis_path))
 
-    joined_qc_stats.view(pd.DataFrame).to_csv(os.path.join(odir,
+    joined_qc_stats.view(pd.DataFrame).to_csv(os.path.join(odir, 'preprocess',
                                                            joined_qc_stats_tab_path), index=True)
 
     return raw_seq, joined_qc_seq
@@ -79,24 +78,25 @@ def run_pipelines(p, pipelines_args):
         raise Exception
     seq_f = seq_f[0]
 
+    os.makedirs(os.path.join(odir, p), exist_ok=True)
     # output part
-    tab.save(os.path.join(odir,
+    tab.save(os.path.join(odir, p,
                           profiled_tab_path.format(prefix=p)))
-    p_tab.to_csv(os.path.join(odir,
+    p_tab.to_csv(os.path.join(odir, p,
                               profiled_tab_path.format(prefix=p)),
                  sep='\t' if profiled_tab_path.endswith('.tab') else ',',
                  index=True)
     mv_seq(seq_f,
-           opath=os.path.join(odir,
+           opath=os.path.join(odir, p,
                               representative_sequence_path.format(prefix=p)),
            name_dict=name_dict)
-    rep.save(os.path.join(odir,
+    rep.save(os.path.join(odir, p,
                           representative_sequence_path.format(prefix=p)))
-    tab_vis.save(os.path.join(odir,
+    tab_vis.save(os.path.join(odir, p,
                               profiled_tab_vis_path.format(prefix=p)))
-    seq_vis.save(os.path.join(odir,
+    seq_vis.save(os.path.join(odir, p,
                               representative_sequence_vis_path.format(prefix=p)))
-    stats_df.to_csv(os.path.join(odir,
+    stats_df.to_csv(os.path.join(odir, p,
                                  process_stats_path.format(prefix=p)))
 
     return tab, p_tab, rep
@@ -108,15 +108,14 @@ def after_otu(args):
     rooted_tree = g_tree(**args)
 
 
-
 if __name__ == '__main__':
     from utils import parse_param
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument("pipelines", help="Which kinds of pipelines you want to perform. \
-                             [deblur|dada2]",
-                        type=str, choices=['deblur', 'dada2'])
+                             [deblur|dada2|none]",
+                        type=str, choices=['deblur', 'dada2', 'none'])
     parser.add_argument("-p", "--parameter",
                         help="input file contains all parameters, template is place at the %s. This is a python script actually, so just use python code to write your code." % os.path.join(
                             os.path.dirname(os.path.abspath(__file__)), 'param.template'), default=os.path.join(os.path.dirname(__file__), 'param.template'))
@@ -126,10 +125,12 @@ if __name__ == '__main__':
     parameter_f = args.parameter
 
     os.makedirs(odir, exist_ok=True)
-    parse_param(parameter_f,g = globals())
+    parse_param(parameter_f, g=globals())
     ## 跑命令
     raw_seq, joined_qc_seq = preprocess(indir)
     print("预处理完成,完成原始序列评估 与 joined, 去污染,去chimera,fix orientation")
+    if p == 'none':
+        exit("Completed...")
     pipelines_args['deblur_input'] = joined_qc_seq
     pipelines_args['dada2_input'] = raw_seq
     tab, p_tab, rep = run_pipelines(p, pipelines_args)

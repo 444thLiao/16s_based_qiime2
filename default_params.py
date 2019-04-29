@@ -14,6 +14,9 @@ opath = '/tmp/test_result/seq_manifest'
 
 ############################################################
 # 输出文件名集合
+raw_seq_path = 'raw_data'
+joined_seq_path = 'joined_seq'
+
 raw_seq_vis_path = 'unjoined_seq_eval'
 joined_seq_vis_path = 'joined_seq_eval'
 joined_qc_seq_vis_path = 'joined_qc_seq_eval'
@@ -51,16 +54,31 @@ demux_dict = dict(
 # 序列评估 可视化部分参数
 n = 10000
 # join 部分参数
-minlen = 100
-allowmergestagger = True
-minovlen = 10
-maxdiffs = 10
+join_params = dict(
+    truncqual=None,
+    minlen=1,
+    maxns=None,
+    allowmergestagger=True,
+    minovlen=10,
+    maxdiffs=10,
+    minmergelen=None,
+    maxmergelen=None,
+    maxee=None,
+    qmin=0,
+    qminout=0,
+    qmax=41,
+    qmaxout=41,
+    qascii=33
+)
 # join 序列评估
-min_quality = 4  # default
-quality_window = 3  # default
-min_length_fraction = 0.75  # default
-max_ambiguous = 0  # default
+qc_joined_params = dict(
+    min_quality=4,  # default
+    quality_window=3,  # default
+    min_length_fraction=0.75,  # default
+    max_ambiguous=0,  # default
+)
 
+# pipeliens args
 pipelines_args = dict(
     # dada2
     trunc_len_f=140,
@@ -96,3 +114,7 @@ pipelines_args = dict(
 #     mask_max_gap_frequency=1.0,
 #     mask_min_conservation=0.4,
 # )
+
+############################################################
+#software path
+vsearch_path = '/home/liaoth/tools/vsearch-2.6.2/bin/vsearch'

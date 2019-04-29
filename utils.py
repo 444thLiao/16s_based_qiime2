@@ -1,13 +1,16 @@
 import csv
 import os
 from glob import glob
-from multiprocessing import Pool, Manager, cpu_count
+from multiprocessing import Pool, cpu_count
 
 import pandas as pd
-from qiime2 import Artifact
-from qiime2.plugins.demux.visualizers import summarize as seq_summ_vis
-from qiime2.plugins.quality_filter.methods import q_score_joined
-from qiime2.plugins.vsearch.methods import join_pairs
+try:
+    from qiime2 import Artifact
+    from qiime2.plugins.demux.visualizers import summarize as seq_summ_vis
+    from qiime2.plugins.quality_filter.methods import q_score_joined
+    from qiime2.plugins.vsearch.methods import join_pairs
+except:
+    pass
 from skbio.io import read, write
 from tqdm import tqdm
 
@@ -100,7 +103,9 @@ def join_seqs(raw_data,
               quality_window=3,  # default
               min_length_fraction=0.75,  # default
               max_ambiguous=0,  # default
+              **kwargs
               ):
+    print("Join_pairs starting.......")
     joined_seq = join_pairs(demultiplexed_seqs=raw_data,
                             minlen=minlen,
                             allowmergestagger=allowmergestagger,
@@ -111,6 +116,7 @@ def join_seqs(raw_data,
     joined_seq_eval_vis = seq_summ_vis(joined_seq,
                                        n=n
                                        )
+    print("Quality control at joined seq starting.......")
     joined_qc_seq, joined_qc_stats = q_score_joined(demux=joined_seq,
                                                     min_quality=min_quality,
                                                     quality_window=quality_window,
