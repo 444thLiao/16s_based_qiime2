@@ -6,8 +6,8 @@ from tqdm import tqdm
 from glob import glob
 from default_params import *
 from utils import data_parser, assign_work_pool
-
-
+import itertools
+from subprocess import check_call
 def p_sto(col, stodge, is_id=False):
     iupac = {'A': 'A', 'T': 'T', 'G': 'G', 'C': 'C', 'R': '[AG]', 'Y': '[CT]',
              'S': '[GC]', 'W': '[AT]', 'K': '[GT]', 'M': '[AC]', 'B': '[CGT]',
@@ -187,7 +187,7 @@ def demux_files(seqfile1,
                 ):
     """
     对单个的序列文件,进行分库,并且输出到output_dir,保持名称不变(不进行压缩)
-    因为对于qiime2而言,这只是个中间文件.
+    因为对于该脚本而言,这只是个中间文件.
     分库的结果只会标记到每个read的head中,而不会生成sample为单位的序列文件
     :param str seqfile1:
     :param str seqfile2:
@@ -204,10 +204,9 @@ def demux_files(seqfile1,
     bc2id = dict(zip(bc, ids))
     if len(set(bc)) != len(set(ids)):
         raise Exception("same barcode corresponding multiple ids.")
-    name_of_input1 = os.path.basename(seqfile1).strip('.gz')
-    name_of_input2 = os.path.basename(seqfile2).strip('.gz')
-    fnames = (os.path.join(output_dir, name_of_input1),
-              os.path.join(output_dir, name_of_input2))
+    name = str(os.path.basename(seqfile1)).partition('_1')[0]
+    dir_name = os.path.join(output_dir,name)
+    os.makedirs(dir_name,exist_ok=True)
     stats = {"reversed reads": 0,
              "single primer": 0,
              "no primer": 0,
@@ -221,13 +220,9 @@ def demux_files(seqfile1,
         if '.gz' in seqfile1:
             seqfile1_stream = gzip.open(seqfile1, 'rt')
             seqfile2_stream = gzip.open(seqfile2, 'rt')
-
-        fq1, fq2 = fnames
-        if not_overwrite_demux and os.path.isfile(fq1) and os.path.isfile(fq2):
-            return stats
-
-        fq1_stream = open(fq1, 'w')
-        fq2_stream = open(fq2, 'w')
+        else:
+            seqfile1_stream = open(seqfile1, 'r')
+            seqfile2_stream = open(seqfile2, 'r')
 
         for read1, read2 in tqdm(zip(SeqIO.parse(seqfile1_stream, format='fastq'),
                                      SeqIO.parse(seqfile2_stream, format='fastq'))):
@@ -251,18 +246,24 @@ def demux_files(seqfile1,
                     stats["remaining reads"] += 1
                     remaining_read1.id = sid + ' ' + tmp1
                     remaining_read2.id = sid + ' ' + tmp2
-                    SeqIO.write(remaining_read1, fq1_stream, format='fastq')
-                    SeqIO.write(remaining_read2, fq2_stream, format='fastq')
+                    id_f1 = os.path.join(dir_name,sid+'_1.fastq')
+                    id_f2 = os.path.join(dir_name, sid + '_2.fastq')
+                    if not os.path.isfile(id_f1):
+                        stream1 = open(id_f1, 'w')
+                        stream2 = open(id_f2, 'w')
+                    else:
+                        stream1 = open(id_f1, 'a')
+                        stream2 = open(id_f2, 'a')
+                    SeqIO.write(remaining_read1, stream1, format='fastq')
+                    SeqIO.write(remaining_read2, stream2, format='fastq')
                 else:
                     stats["missing barcode"] += 1
             # else:
             #     print(_s, read1.id, total_bc, bc2id.get(total_bc, None))
-        fq1_stream.close()
-        fq2_stream.close()
     else:
         # 不想写....
         process_single()
-    name = str(os.path.basename(name_of_input1)).partition('_1')[0]
+
     return name, stats
 
 
@@ -291,27 +292,30 @@ def cal(args):
     func, args = args
     return func(*args)
 
-
-def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num_thread):
-    """
-    将多个demux_files输出的结果,根据每个read前面的id,生成到以sample为单位的序列文件中
-    :param list seqfile1:
-    :param list seqfile2:
-    :param str output_dir_pre:
-    :param str output_dir_samples:
-    :return:
-    """
-    all_args = [(_split, (f1, f2, output_dir_pre, output_dir_samples)) for f1, f2 in zip(seqfile1, seqfile2)]
-
-    assign_work_pool(cal, all_args, num_thread=num_thread)
-
-    f1_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
-                                                    '*_1.fastq')) if _ not in seqfile1])
-    f2_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
-                                                    '*_2.fastq')) if _ not in seqfile2])
-    ids = [str(os.path.basename(_)).split('_1')[0] for _ in f1_files]
-    return f1_files, f2_files, ids
-
+#
+# def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num_thread):
+#     """
+#     将多个demux_files输出的结果,根据每个read前面的id,生成到以sample为单位的序列文件中
+#     :param list seqfile1:
+#     :param list seqfile2:
+#     :param str output_dir_pre:
+#     :param str output_dir_samples:
+#     :return:
+#     """
+#     all_args = [(_split, (f1, f2, output_dir_pre, output_dir_samples)) for f1, f2 in zip(seqfile1, seqfile2)]
+#
+#     assign_work_pool(cal, all_args, num_thread=num_thread)
+#
+#     f1_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
+#                                                     '*_1.fastq')) if _ not in seqfile1])
+#     f2_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
+#                                                     '*_2.fastq')) if _ not in seqfile2])
+#     ids = [str(os.path.basename(_)).split('_1')[0] for _ in f1_files]
+#     return f1_files, f2_files, ids
+def merge_files(cmd_template,sid,num):
+    check_call(cmd_template.format(sid=sid,
+                                   num=num))
+    return 'complete'
 
 def main(metadata,
          id_col='',
@@ -367,11 +371,16 @@ def main(metadata,
         for name, stats in results:
             file_stats[name] = stats
 
-        print("Start separating reads into multiple sampels fastq......")
-        f1_files, f2_files, ids = split_into_files(seqfile1=seqfile1,
-                                                   seqfile2=seqfile2,
-                                                   output_dir_pre=output_dir_pre,
-                                                   output_dir_samples=output_dir_samples, num_thread=num_thread)
+        print("Start mergeing reads from multiple sampels fastq......")
+        all_sample_files = glob(os.path.join(output_dir_pre,'*','*_1.fastq'))
+        unique_samples_name = set([os.path.basename(_).replace('_1.fastq','') for _ in all_sample_files])
+        # concat start.
+        cmd_template = "cat %s > %s" % (os.path.join(output_dir_pre, '*', '{sid}_{num}.fastq'),
+                                        os.path.join(output_dir_samples, "{sid}_{num}.fastq"))
+        all_args = [(merge_files, (cmd_template,
+                                   sid,
+                                   num,)) for sid, num in itertools.product(unique_samples_name, ['1','2'])]
+        results = assign_work_pool(cal, all_args, num_thread=num_thread)
     else:
         # 多种barcode长度,忽略吧...
         ## 还不知道该咋办...不应该的说
