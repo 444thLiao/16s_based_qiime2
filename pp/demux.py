@@ -8,6 +8,9 @@ from default_params import *
 from utils import data_parser, assign_work_pool
 import itertools
 from subprocess import check_call
+
+root_path = os.path.abspath(__file__)
+
 def p_sto(col, stodge, is_id=False):
     iupac = {'A': 'A', 'T': 'T', 'G': 'G', 'C': 'C', 'R': '[AG]', 'Y': '[CT]',
              'S': '[GC]', 'W': '[AT]', 'K': '[GT]', 'M': '[AC]', 'B': '[CGT]',
@@ -375,6 +378,7 @@ def main(metadata,
         all_sample_files = glob(os.path.join(output_dir_pre,'*','*_1.fastq'))
         unique_samples_name = set([os.path.basename(_).replace('_1.fastq','') for _ in all_sample_files])
         # concat start.
+        # rerun it again
         cmd_template = "cat %s > %s" % (os.path.join(output_dir_pre, '*', '{sid}_{num}.fastq'),
                                         os.path.join(output_dir_samples, "{sid}_{num}.fastq"))
         all_args = [(merge_files, (cmd_template,
@@ -390,18 +394,17 @@ def main(metadata,
 
 
 if __name__ == '__main__':
-    # path = os.path.abspath(__file__)
-
-
-    path = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/pp/demux.py'
-
-    metadata = os.path.join(os.path.dirname(path), '..', 'test', 'metadata.tab')
+    from os.path import dirname
+    # path = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/pp/demux.py'
+    metadata = os.path.join(dirname(dirname(root_path)),  'test', 'metadata.tab')
     id_col = 'SampleID'
     fb_col = 'Forward_Barcode'
     rb_col = 'Reverse_Barcode'
     fp_col = 'Forward_Primer'
     rp_col = 'Reverse_Primer'
-    seqfile1, seqfile2 = sorted(glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_1.fastq.gz')), \
+    seqfile1, seqfile2 = sorted(glob(os.path.join(dirname(dirname(root_path)),
+                                                  'test/seq_data2/test_seq*_1.fastq.gz')
+                                     )), \
                          sorted(glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz'))
     # the order of glob output is random, be careful !!!!!!!!!!!!!!!!!!!!!!!!1
     f1_files, f2_files, ids, stats = main(metadata=metadata,
