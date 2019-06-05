@@ -15,6 +15,7 @@ def cal(args):
     func, args = args
     return func(*args)
 
+
 def join_pairs(manifest,
                n_thread,
                truncqual: int = join_params['truncqual'],

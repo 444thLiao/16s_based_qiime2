@@ -11,25 +11,26 @@ idpattern = '(.*).[12].fastq.gz'
 # 输出
 odir = '/tmp/test_result'
 opath = '/tmp/test_result/seq_manifest'
-
+log_name = "cmd_log.txt"
+############################################################
+preprocess_path = "preprocess"
 ############################################################
 # 输出文件名集合
 raw_seq_path = 'raw_data'
 joined_seq_path = 'joined_seq'
+joined_qc_seq_path = 'joined_qc_seq'
 
 raw_seq_vis_path = 'unjoined_seq_eval'
 joined_seq_vis_path = 'joined_seq_eval'
 joined_qc_seq_vis_path = 'joined_qc_seq_eval'
-joined_qc_stats_tab_path = 'joined_qc_stats.csv'
+joined_qc_stats_tab_path = 'joined_qc_stats.qzv'
 
-profiled_tab_path = '{prefix}_profiling.tab'
-profiled_tab_vis_path = '{prefix}_profiling'
-representative_sequence_path = '{prefix}_rep.fa'
-representative_sequence_vis_path = '{prefix}_rep'
-process_stats_path = '{prefix}_profiling_stats.csv'
+profiled_tab_path = 'profiling.qza'
+representative_sequence_path = 'rep.fa'
+process_stats_path = 'profiling_stats.qza'
 
-root_tree_path = '{prefix}_rep_rooted_tree.tab'
-tax_tab = '{prefix}_rep_sintax.tab'
+root_tree_path = 'rep_rooted_tree.tab'
+tax_tab = 'rep_sintax.tab'
 
 demux_dir_pre = os.path.join(odir, 'demux', 'pre')
 demux_dir_samples = os.path.join(odir, 'demux', 'samples')
@@ -67,8 +68,7 @@ join_params = dict(
     qmin=0,
     qminout=0,
     qmax=41,
-    qmaxout=41,
-    qascii=33
+    qmaxout=41
 )
 # join 序列评估
 qc_joined_params = dict(
@@ -78,15 +78,7 @@ qc_joined_params = dict(
     max_ambiguous=0,  # default
 )
 
-# pipeliens args
-pipelines_args = dict(
-    # dada2
-    trunc_len_f=140,
-    trunc_len_r=150,
-    n_threads=0,  # all threads
-    trunc_q=2,  # default
-    n_reads_learn=1000000,  # default
-    max_ee=2.0,  # default
+deblur_args = dict(
     # deblur
     trim_length=250,
     sample_stats=True,
@@ -97,9 +89,22 @@ pipelines_args = dict(
     min_size=2,  # default
     jobs_to_start=7,
     hashed_feature_ids=True,  # default
+)
+
+# pipeliens args
+dada2_args = dict(
+    # dada2
+    trunc_len_f=140,
+    trunc_len_r=150,
+    n_threads=0,  # all threads
+    trunc_q=2,  # default
+    n_reads_learn=1000000,  # default
+    max_ee=2.0,  # default
+
     # vsearch-otu
 
 )
+
 
 # Not implement yet
 ## after profiling

@@ -2,7 +2,8 @@ import csv
 import os
 from glob import glob
 from multiprocessing import Pool, cpu_count
-
+from subprocess import check_call
+import sys
 import pandas as pd
 try:
     from qiime2 import Artifact
@@ -32,6 +33,62 @@ def data_parser(path, ft='csv', **kwargs):
 
     return df
 
+def run_cmd(cmd, dry_run=False, log_file=None, **kwargs):
+    outstream = None
+    if type(log_file) == str:
+        if os.path.isfile(log_file):
+            if os.path.getsize(log_file) != 0:
+                outstream = open(log_file, 'a')
+        if outstream is None:
+            valid_path(log_file,check_ofile=True)
+            outstream = open(log_file, 'w')
+    elif log_file is None:
+        outstream = sys.stdout
+    else:
+        outstream = log_file
+
+    print(cmd, file=outstream)
+    outstream.flush()
+    if not dry_run:
+        check_call(cmd,
+                   shell=True,
+                   executable="/usr/bin/zsh",
+                   stdout=outstream,
+                   stderr=outstream,
+                   **kwargs)
+        outstream.flush()
+def valid_path(in_pth,
+               check_size=False,
+               check_dir=False,
+               check_glob=False,
+               check_odir=False,
+               check_ofile=False):
+    if type(in_pth) == str:
+        in_pths = [in_pth]
+    else:
+        in_pths = in_pth[::]
+    for in_pth in in_pths:
+        in_pth = os.path.abspath(os.path.realpath(in_pth))
+        if in_pth is None:
+            continue
+        if check_glob:
+            query_list = glob(in_pth)
+            if not query_list:
+                raise Exception('Error because of input file pattern %s' % in_pth)
+        if check_dir:
+            if not os.path.isdir(in_pth):
+                raise Exception("Error because %s doesn't exist" % in_pth)
+        if check_size:
+            if os.path.getsize(in_pth) <= 0:
+                raise Exception("Error because %s does not contain content." % in_pth)
+        if check_odir:
+            if not os.path.isdir(in_pth):
+                os.makedirs(in_pth, exist_ok=True)
+        if check_ofile:
+            odir_file = os.path.dirname(in_pth)
+            if not os.path.isdir(odir_file):
+                os.makedirs(odir_file, exist_ok=True)
+    return True
 
 def get_files(indir, p):
     f_pattern = p.strip('.')
@@ -40,7 +97,7 @@ def get_files(indir, p):
 
 
 def write_manifest(opath, r1_files, r2_files, ids):
-    os.makedirs(os.path.dirname(os.path.abspath(opath)), exist_ok=True)
+    valid_path(opath,check_ofile=True)
 
     template_text = "sample-id,absolute-filepath,direction\n"
     for r1, r2, sid in zip(r1_files, r2_files, ids):
@@ -93,46 +150,6 @@ def seq_eval(seq_data,
     return raw_seq_eval_vis
 
 
-def join_seqs(raw_data,
-              minlen=100,
-              allowmergestagger=True,
-              minovlen=10,
-              maxdiffs=10,
-              n=10000,
-              min_quality=4,  # default
-              quality_window=3,  # default
-              min_length_fraction=0.75,  # default
-              max_ambiguous=0,  # default
-              **kwargs
-              ):
-    print("Join_pairs starting.......")
-    joined_seq = join_pairs(demultiplexed_seqs=raw_data,
-                            minlen=minlen,
-                            allowmergestagger=allowmergestagger,
-                            minovlen=minovlen,  # default
-                            maxdiffs=maxdiffs,  # default
-                            )
-    joined_seq = joined_seq[0]
-    joined_seq_eval_vis = seq_summ_vis(joined_seq,
-                                       n=n
-                                       )
-    print("Quality control at joined seq starting.......")
-    joined_qc_seq, joined_qc_stats = q_score_joined(demux=joined_seq,
-                                                    min_quality=min_quality,
-                                                    quality_window=quality_window,
-                                                    min_length_fraction=min_length_fraction,
-                                                    max_ambiguous=max_ambiguous,
-                                                    )
-    joined_qc_eval_vis = seq_summ_vis(joined_qc_seq,
-                                      n=n
-                                      )
-
-    return (joined_seq,
-            joined_seq_eval_vis[0],
-            joined_qc_seq,
-            joined_qc_eval_vis[0],
-            joined_qc_stats
-            )
 
 
 def mv_seq(seq, opath, name_dict):
