@@ -13,6 +13,7 @@ odir = '/tmp/test_result'
 opath = '/tmp/test_result/seq_manifest'
 log_name = "cmd_log.txt"
 ############################################################
+# dir
 preprocess_path = "preprocess"
 ############################################################
 # 输出文件名集合
@@ -20,13 +21,13 @@ raw_seq_path = 'raw_data'
 joined_seq_path = 'joined_seq'
 joined_qc_seq_path = 'joined_qc_seq'
 
+summarized_stats_path = "summary_stats.csv"
 raw_seq_vis_path = 'unjoined_seq_eval'
 joined_seq_vis_path = 'joined_seq_eval'
 joined_qc_seq_vis_path = 'joined_qc_seq_eval'
-joined_qc_stats_tab_path = 'joined_qc_stats.qzv'
 
 profiled_tab_path = 'profiling.qza'
-representative_sequence_path = 'rep.fa'
+representative_sequence_path = 'rep_fa.qza'
 process_stats_path = 'profiling_stats.qza'
 
 root_tree_path = 'rep_rooted_tree.tab'

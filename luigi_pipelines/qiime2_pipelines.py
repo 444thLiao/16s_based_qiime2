@@ -1,10 +1,11 @@
 import os
-from os.path import join
+from os.path import join,dirname
 
 import luigi
 
-from luigi_pipelines import fileparser, run_cmd, config, valid_path, basic_luigi_task, visulize_seq
-
+from luigi_pipelines import fileparser, run_cmd, config, valid_path, basic_luigi_task, visulize_seq, summarized_tasks,tabulate_seq
+import sys
+sys.path.insert(0, dirname(__file__))
 
 class import_data(basic_luigi_task):
     def output(self):
@@ -83,6 +84,8 @@ class qualityFilter(basic_luigi_task):
             output_seq=self.output().path,
             output_stats=self.output().path.replace(
                 '.qza', '-stats.qza'))
+        # path of stats used in `share_tasks.summaried_tasks`
+
         cmd += extra_str
         run_cmd(cmd,
                 dry_run=self.dry_run,
@@ -93,11 +96,12 @@ class qualityFilter(basic_luigi_task):
 
 class run_dada2(basic_luigi_task):
     mission = 'dada2'
+
     def requires(self):
         return import_data(tab=self.tab,
-                    odir=self.odir,
-                    dry_run=self.dry_run,
-                    log_path=self.log_path)
+                           odir=self.odir,
+                           dry_run=self.dry_run,
+                           log_path=self.log_path)
 
     def output(self):
         ofiles = list(map(luigi.LocalTarget,
@@ -114,7 +118,7 @@ class run_dada2(basic_luigi_task):
         return ofiles
 
     def run(self):
-        valid_path(self.output()[0].path,check_ofile=1)
+        valid_path(self.output()[0].path, check_ofile=1)
         extra_str = ''
         for p, val in config.dada2_args.items():
             p = p.replace('_', '-')
@@ -138,7 +142,8 @@ class run_dada2(basic_luigi_task):
 
 
 class run_deblur(basic_luigi_task):
-    mission="deblur"
+    mission = "deblur"
+
     def requires(self):
         return qualityFilter(tab=self.tab,
                              odir=self.odir,
@@ -191,6 +196,22 @@ class joined_summarize(visulize_seq):
                             dry_run=self.dry_run,
                             log_path=self.log_path)
 
+
+class view_rep_seq(tabulate_seq):
+    analysis_mission = luigi.Parameter(default="both")
+    def requires(self):
+        kwargs = dict(tab=self.tab,
+                      odir=self.odir,
+                      dry_run=self.dry_run,
+                      log_path=self.log_path)
+        if self.analysis_mission == "dada2":
+            return run_dada2(**kwargs)
+        elif self.analysis_mission == "deblur":
+            return run_deblur(**kwargs)
+        else:
+            raise Exception("wrong analysis_mission %s" % self.analysis_mission)
+
+
 # class dada2_summarize(visulize_table):
 #     def requires(self):
 #         pass
@@ -200,35 +221,63 @@ class joined_summarize(visulize_seq):
 #         pass
 
 
-class summarize_all(basic_luigi_task):
+class summarize_all(luigi.Task):
+    tab = luigi.Parameter()
+    odir = luigi.Parameter()
+    dry_run = luigi.BoolParameter()
+    log_path = luigi.Parameter(default=None)
+    analysis_mission = luigi.Parameter(default="both")
+
     def requires(self):
         kwargs = dict(tab=self.tab,
-                            odir=self.odir,
-                            dry_run=self.dry_run,
-                            log_path=self.log_path)
+                      odir=self.odir,
+                      dry_run=self.dry_run,
+                      log_path=self.log_path)
+        am = str(self.analysis_mission)
         required_tasks = {}
-        required_tasks["deblur"] = run_deblur(**kwargs)
-        required_tasks["dada2"] = run_dada2(**kwargs)
-
+        if am == "both":
+            required_tasks["deblur"] = run_deblur(**kwargs)
+            required_tasks["dada2"] = run_dada2(**kwargs)
+            required_tasks["view_rep_seq1"] = view_rep_seq(analysis_mission="dada2",
+                                                          **kwargs)
+            required_tasks["view_rep_seq2"] = view_rep_seq(analysis_mission="deblur",
+                                                          **kwargs)
+        elif am == "dada2":
+            required_tasks["dada2"] = run_dada2(**kwargs)
+            required_tasks["view_rep_seq"] = view_rep_seq(analysis_mission=am,
+                                                          **kwargs)
+        elif am == "deblur":
+            required_tasks["deblur"] = run_deblur(**kwargs)
+            required_tasks["view_rep_seq"] = view_rep_seq(analysis_mission=am,
+                                                          **kwargs)
+        else:
+            raise Exception("wrong analysis_mission %s" % self.analysis_mission)
         required_tasks["joined"] = joined_summarize(**kwargs)
-        required_tasks["after_qc"] = qualityFilter(**kwargs)
-
-        required_tasks["after_qc"] = deblur_summarize(**kwargs)
-        required_tasks["after_qc"] = deblur_summarize(**kwargs)
-        required_tasks["after_qc"] = deblur_summarize(**kwargs)
+        required_tasks["joined_qc"] = qualityFilter(**kwargs)
         return required_tasks
+
     def output(self):
-        pass
+        ofile = os.path.join(self.odir,config.summarized_stats_path)
+        return luigi.LocalTarget(ofile)
+
     def run(self):
-        from qiime2 import Artifact
-        for k,v in Artifact
+        merged_df = {}
+        for k, v in self.input().items():
+            df = summarized_tasks(k,v)
+            if df is not None:
+                merged_df[k] = df
+        import pandas as pd
+        final_df = pd.concat([_ for _ in merged_df.values()],axis=1)
+        final_df.to_csv(self.output().path)
+
 
 ############################################################
-class get_tree_qiim2(basic_luigi_task):
+class get_tree(basic_luigi_task):
     """
     todo: do it myself...
     """
-    prefix=luigi.Parameter()
+    prefix = luigi.Parameter()
+
     def requires(self):
         pass
         # return run_deblur(tab=self.tab,
