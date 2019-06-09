@@ -1,15 +1,25 @@
+#################################################################################
+####  利用多进程+协程，进行高效的demutiplex data
+####  20190609
+####  by tianhua liao
+#################################################################################
 import gzip
 import re
-
+import os
+from pp import constant
 from Bio import SeqIO
 from tqdm import tqdm
 from glob import glob
-from default_params import *
-from utils import data_parser, assign_work_pool
-import itertools
-from subprocess import check_call
+from utils import data_parser
+import multiprocessing as mp
+import asyncio
+import click
+import pandas as pd
 
 root_path = os.path.abspath(__file__)
+r1_suffix_format = "_R1.fastq"
+r2_suffix_format = "_R2.fastq"
+
 
 def p_sto(col, stodge, is_id=False):
     iupac = {'A': 'A', 'T': 'T', 'G': 'G', 'C': 'C', 'R': '[AG]', 'Y': '[CT]',
@@ -42,6 +52,7 @@ def parse_metadata(metadata,
                    fp_col='',
                    rp_col='',
                    ):
+    # parse a metadata and return barcode & sample info
     ids = []
     fb = []
     rb = []
@@ -49,7 +60,7 @@ def parse_metadata(metadata,
     rp = []
     col2sto = dict(zip([id_col, fb_col, rb_col, fp_col, rp_col],
                        [ids, fb, rb, fp, rp]))
-    metadf = data_parser(metadata, ft='csv')
+    metadf = data_parser(os.path.abspath(metadata), ft='csv')
 
     for col, sto in col2sto.items():
         if col and col in metadf.columns:
@@ -61,13 +72,43 @@ def parse_metadata(metadata,
     return ids, fb, rb, fp, rp
 
 
+def get_total_bc(bc1, bc2, bc_type):
+    if bc_type == "concat":
+        total_bc = bc1 + bc2
+    elif bc_type == "same":
+        assert bc1 == bc2
+        total_bc = bc1
+    return total_bc
+
+
+def exec_fun(args):
+    func, kwargs = args
+    return func(**kwargs)
+
+
 def process_pair(read1_data,
                  read2_data,
-                 forward_primers=None,
-                 reverse_primers=None,
+                 forward_primers,
+                 reverse_primers,
                  length_bc=None,
                  attempt_read_orientation=False,
+                 barcode_type="concat",
                  ):
+    """
+    默认双端都有barcode，默认拼起来使用（也可以选其一）
+    Given pair record from fastq and assign sample name to its
+    返回
+    去除了primer,barcode的R1,R2的reads(已经校正了方向)，barcode，统计信息
+    统计信息只有1/0，分别是 [方向相反，单个primer，无primer]
+    :param read1_data:
+    :param read2_data:
+    :param forward_primers:
+    :param reverse_primers:
+    :param length_bc:
+    :param attempt_read_orientation:
+    :param barcode_type: concat / same
+    :return:
+    """
     # init
     is_reversed = False
     is_close_circle = False
@@ -84,13 +125,17 @@ def process_pair(read1_data,
 
     ## force re orientation
     for curr_primer in forward_primers:
+        # iter forward primer first
         matched_str = curr_primer.search(r1_seq)
         if matched_str is not None:
+            # search the primer, if we find this, it mean r1 is r1. orientation is right.
             read1 = read1_data
             read2 = read2_data
             bc1_end = fp_start = matched_str.start()
+            # start of forward primer is the end of barcode.
             fp_end = matched_str.end()
             break
+            # if we find it, just break it.
         matched_str = curr_primer.search(r2_seq)
         if matched_str is not None:
             read1 = read2_data
@@ -121,50 +166,48 @@ def process_pair(read1_data,
                 rp_end = matched_str.end()
                 is_close_circle = True
                 break
-    # if read1_data.id == 'ERR1750995.619':
-    #     import pdb;pdb.set_trace()
+
     if is_close_circle:
-        # 双向都找到了对应的barcode, 或者闭合且单向的也找到了.
+        # pair的reads上都找到了对应的barcode
         if length_bc is None:
+            # 如果barcode 长度没给定。
             bc1_start = 0
             bc2_start = 0
         else:
             bc1_start = bc1_end - length_bc
             bc2_start = bc2_end - length_bc
-        bc1 = read1[bc1_start:bc1_end]
-        remaining_read1 = read1[fp_end:]  # cut primer and barcode before it
-        bc2 = read2[bc2_start:bc2_end]
+        bc1 = str(read1[bc1_start:bc1_end].seq)
+        remaining_read1 = read1[fp_end:]
+        # cut primer and barcode before it
+        bc2 = str(read2[bc2_start:bc2_end].seq)
         remaining_read2 = read2[rp_end:]
-        total_bc = bc1 + bc2
+
 
     else:
-        # import pdb;pdb.set_trace()
-        # print("Wrong seq.",
-        #       "id1:%s,id2:%s" % (read1_data.id, read2_data.id),
-        #       "bc1_end: %s" % str(bc1_end),
-        #       "bc2_end: %s" % str(bc2_end),
-        #       "read1_data[:40]: %s" % str(read1_data[:40].seq),
-        #       "read2_data[:40]: %s" % str(read2_data[:40].seq),
-        #       )
         if (bc1_end is None) and (bc2_end is None):
+            # both primer are missing
             stats[2] = 1
         else:
+            # one of them is missing.
             stats[1] = 1
-        total_bc = read1_data[0:length_bc] + read2_data[0:length_bc]
+        bc1 = str(read1_data[0:length_bc].seq)
+        bc2 = str(read2_data[0:length_bc].seq)
+        # force to cut a barcode (mostly it is wrong)
         remaining_read1 = read1_data[length_bc:]
         remaining_read2 = read2_data[length_bc:]
 
-    total_bc = str(total_bc.seq)
-    if is_close_circle and attempt_read_orientation:
-        # 如果闭环,且要fix方向,则正常输出
-        output_read1 = remaining_read1
-        output_read2 = remaining_read2
-    elif not attempt_read_orientation and is_close_circle:
-        # 如果闭环,且不想fix方向,那么,按照原来的方向
-        # 如果is_reversed,说明read1/2互换了,而read1肯定到read1_output2file,所以此时,应该是
-        #       read1_output2file 输出到output_fastq2,才能保证按照原来方向
-        output_read1 = remaining_read2 if is_reversed else remaining_read1
-        output_read2 = remaining_read1 if is_reversed else remaining_read2
+    total_bc = get_total_bc(bc1, bc2, barcode_type)
+    if is_close_circle:
+        if attempt_read_orientation:
+            # 如果要fix方向,则正常输出
+            output_read1 = remaining_read1
+            output_read2 = remaining_read2
+        else:
+            # 如果不想fix方向,那么,按照原来的方向
+            # 如果is_reversed,说明read1/2互换了,而read1肯定到read1_output2file,所以此时,应该是
+            #       read1_output2file 输出到output_fastq2,才能保证按照原来方向
+            output_read1 = remaining_read2 if is_reversed else remaining_read1
+            output_read2 = remaining_read1 if is_reversed else remaining_read2
     else:
         # 如果不闭环,那么说明这个切(primer/barcode)都切不了..算了,告辞..不要这条read了
         output_read1 = None
@@ -185,8 +228,10 @@ def demux_files(seqfile1,
                 bc,
                 length_bc,
                 output_dir,
-                not_overwrite_demux=False,
-                attempt_read_orientation=False
+                fileid='',
+                attempt_read_orientation=False,
+                barcode_type='concat',
+                num_thread=0
                 ):
     """
     对单个的序列文件,进行分库,并且输出到output_dir,保持名称不变(不进行压缩)
@@ -204,22 +249,29 @@ def demux_files(seqfile1,
     :param bool attempt_read_orientation:
     :return:
     """
-    bc2id = dict(zip(bc, ids))
+    if num_thread == 0 or num_thread == -1:
+        num_thread = mp.cpu_count()
+
     if len(set(bc)) != len(set(ids)):
         raise Exception("same barcode corresponding multiple ids.")
-    name = str(os.path.basename(seqfile1)).partition('_1')[0]
-    dir_name = os.path.join(output_dir,name)
-    os.makedirs(dir_name,exist_ok=True)
-    stats = {"reversed reads": 0,
+    bc2id = dict(zip(bc,
+                     ids))
+
+    name = fileid if fileid else "Demux"
+
+    stats = {"mix-orientation reads": 0,
              "single primer": 0,
              "no primer": 0,
-             "missing barcode": 0,
-             "remaining reads": 0}
+             "unknown barcode": 0,
+             "output reads": 0}
+
     if len(set(fp)) != 1:
         print('WARNING!!!! Different primers, it may occur errors.')
     fp = list(set(fp))
     rp = list(set(rp))
+
     if seqfile2:
+        # PE sequencing files input
         if '.gz' in seqfile1:
             seqfile1_stream = gzip.open(seqfile1, 'rt')
             seqfile2_stream = gzip.open(seqfile2, 'rt')
@@ -227,113 +279,115 @@ def demux_files(seqfile1,
             seqfile1_stream = open(seqfile1, 'r')
             seqfile2_stream = open(seqfile2, 'r')
 
-        for read1, read2 in tqdm(zip(SeqIO.parse(seqfile1_stream, format='fastq'),
-                                     SeqIO.parse(seqfile2_stream, format='fastq'))):
-            remaining_read1, remaining_read2, total_bc, _s = process_pair(read1_data=read1,
-                                                                          read2_data=read2,
-                                                                          forward_primers=fp,
-                                                                          reverse_primers=rp,
-                                                                          length_bc=length_bc,
-                                                                          attempt_read_orientation=attempt_read_orientation)
-            stats["reversed reads"] += _s[0]
-            stats["single primer"] += _s[1]
-            stats["no primer"] += _s[2]
-            if remaining_read1 is not None:
-                tmp1 = remaining_read1.description
-                tmp2 = remaining_read2.description
-                remaining_read1.id = remaining_read1.name = remaining_read1.description = ''
-                remaining_read2.id = remaining_read2.name = remaining_read2.description = ''
+        params = [(process_pair,
+                   dict(read1_data=read1,
+                        read2_data=read2,
+                        forward_primers=fp,
+                        reverse_primers=rp,
+                        length_bc=length_bc,
+                        attempt_read_orientation=attempt_read_orientation,
+                        barcode_type=barcode_type))
+                  for read1, read2 in zip(SeqIO.parse(seqfile1_stream, format='fastq'),
+                                               SeqIO.parse(seqfile2_stream, format='fastq'))]
+        loop = asyncio.new_event_loop()
+        # 准备一个协程的事件管理loop
+        with mp.Pool(processes=num_thread) as thread_pool:
+            # 准备一个线程池
+            imap_it = thread_pool.imap(exec_fun, params)
 
-                sid = bc2id.get(total_bc, None)
-                if sid is not None:
-                    stats["remaining reads"] += 1
-                    remaining_read1.id = sid + ' ' + tmp1
-                    remaining_read2.id = sid + ' ' + tmp2
-                    id_f1 = os.path.join(dir_name,sid+'_1.fastq')
-                    id_f2 = os.path.join(dir_name, sid + '_2.fastq')
-                    if not os.path.isfile(id_f1):
-                        stream1 = open(id_f1, 'w')
-                        stream2 = open(id_f2, 'w')
+            for remaining_read1, remaining_read2, total_bc, _s in tqdm(imap_it):
+                stats["mix-orientation reads"] += _s[0]
+                stats["single primer"] += _s[1]
+                stats["no primer"] += _s[2]
+                if remaining_read1 is not None:
+                    tmp1 = remaining_read1.description
+                    tmp2 = remaining_read2.description
+                    remaining_read1.id = remaining_read1.name = remaining_read1.description = ''
+                    remaining_read2.id = remaining_read2.name = remaining_read2.description = ''
+
+                    sid = bc2id.get(total_bc, None)
+                    if sid is not None:
+                        # try to get corresponding sample id
+                        stats["output reads"] += 1
+                        remaining_read1.id = sid + ' ' + tmp1
+                        remaining_read2.id = sid + ' ' + tmp2
+
+                        file_f1 = os.path.join(output_dir, sid + r1_suffix_format)
+                        file_f2 = os.path.join(output_dir, sid + r2_suffix_format)
+                        # 调用异步调用
+                        loop.run_until_complete(async_work(remaining_read1,
+                                                           remaining_read2,
+                                                           file_f1,
+                                                           file_f2))
                     else:
-                        stream1 = open(id_f1, 'a')
-                        stream2 = open(id_f2, 'a')
-                    SeqIO.write(remaining_read1, stream1, format='fastq')
-                    SeqIO.write(remaining_read2, stream2, format='fastq')
-                else:
-                    stats["missing barcode"] += 1
-            # else:
-            #     print(_s, read1.id, total_bc, bc2id.get(total_bc, None))
+                        stats["unknown barcode"] += 1
+        loop.close()
     else:
-        # 不想写....
+        # todo: 处理single end的测序数据（这么少了。。。干脆不写了吧。。
         process_single()
 
     return name, stats
 
 
-def _split(f1, f2, output_dir_pre, output_dir_samples):
-    nf1 = os.path.join(output_dir_pre, os.path.basename(f1).strip('.gz'))
-    nf2 = os.path.join(output_dir_pre, os.path.basename(f2).strip('.gz'))
-
-    seqfile1_stream = open(nf1, 'r')
-    seqfile2_stream = open(nf2, 'r')
-    for read1, read2 in tqdm(zip(SeqIO.parse(seqfile1_stream, format='fastq'),
-                                 SeqIO.parse(seqfile2_stream, format='fastq'))):
-        sid = read1.id
-        id_f1 = os.path.join(output_dir_samples, '%s_1.fastq' % sid)
-        id_f2 = os.path.join(output_dir_samples, '%s_2.fastq' % sid)
-        if not os.path.isfile(id_f1):
-            stream1 = open(id_f1, 'w')
-            stream2 = open(id_f2, 'w')
-        else:
-            stream1 = open(id_f1, 'a')
-            stream2 = open(id_f2, 'a')
-        SeqIO.write(read1, stream1, format='fastq')
-        SeqIO.write(read2, stream2, format='fastq')
+async def async_work(read1, read2, file1, file2):
+    # 异步处理 write2file
+    await write2file(read1, read2, file1, file2)
 
 
-def cal(args):
-    func, args = args
-    return func(*args)
+async def write2file(read1, read2, file1, file2):
+    if not os.path.isfile(file1):
+        stream1 = open(file1, 'w')
+        stream2 = open(file2, 'w')
+    else:
+        stream1 = open(file1, 'a')
+        stream2 = open(file2, 'a')
+    SeqIO.write(read1, stream1, format='fastq')
+    SeqIO.write(read2, stream2, format='fastq')
 
-#
-# def split_into_files(seqfile1, seqfile2, output_dir_pre, output_dir_samples, num_thread):
-#     """
-#     将多个demux_files输出的结果,根据每个read前面的id,生成到以sample为单位的序列文件中
-#     :param list seqfile1:
-#     :param list seqfile2:
-#     :param str output_dir_pre:
-#     :param str output_dir_samples:
-#     :return:
-#     """
-#     all_args = [(_split, (f1, f2, output_dir_pre, output_dir_samples)) for f1, f2 in zip(seqfile1, seqfile2)]
-#
-#     assign_work_pool(cal, all_args, num_thread=num_thread)
-#
-#     f1_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
-#                                                     '*_1.fastq')) if _ not in seqfile1])
-#     f2_files = sorted([_ for _ in glob(os.path.join(output_dir_samples,
-#                                                     '*_2.fastq')) if _ not in seqfile2])
-#     ids = [str(os.path.basename(_)).split('_1')[0] for _ in f1_files]
-#     return f1_files, f2_files, ids
-def merge_files(cmd_template,sid,num):
-    check_call(cmd_template.format(sid=sid,
-                                   num=num))
-    return 'complete'
 
+def worker(input_q, output_q):
+    for func, args in iter(input_q.get, 'STOP'):
+        # keep get value from input_q, if it is return STOP, stop.
+        result = func(args)
+        output_q.put(result)
+
+
+def get_paths(files_input):
+    if type(files_input) == str:
+        return list(sorted(glob(files_input)))
+    else:
+        return files_input
+
+
+@click.command()
+@click.option("-m", '--metadata', "metadata", help='path of metadata')
+@click.option("-o", '--output-dir', "output_dir", help='The directory you want to output to')
+@click.option("-r1", '--r1-files', "r1_files", type=str,
+              help='forward reads you want to demuplexed. If you pass wildcard, it should use quote to quote it.')
+@click.option("-r2", '--r2-files', "r2_files", type=str,
+              help='Revesed reads you want to demuplexed. If you pass wildcard, it should use quote to quote it.')
+@click.option("-f", '--overwrite-demux', "overwrite_demux", is_flag=True, help='Overwrite or not')
+@click.option("-r", '--fix-orientation/--no-fix', "attempt_read_orientation",
+              default=True, help='fix orientation or not?')
+@click.option("-p", '--num_thread', "num_thread", default=0, show_default=True,
+              help='The number of thread you want to use. 0 mean all threads')
 def main(metadata,
-         id_col='',
-         fb_col='',
-         rb_col='',
-         fp_col='',
-         rp_col='',
-         seqfile1=(),
-         seqfile2=(),
-         output_dir_pre=None,
-         output_dir_samples=None,
-         not_overwrite_demux=False,
+         id_col=constant.id_col,
+         fb_col=constant.fb_col,
+         rb_col=constant.rb_col,
+         fp_col=constant.fp_col,
+         rp_col=constant.rp_col,
+         r1_files=(),
+         r2_files=(),
+         output_dir=None,
+         overwrite_demux=True,
          attempt_read_orientation=False,
          num_thread=0
          ):
+    if overwrite_demux and os.path.isdir(output_dir):
+        os.system("rm -fr %s" % output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
     ids, fb, rb, fp, rp = parse_metadata(metadata,
                                          id_col=id_col,
                                          fb_col=fb_col,
@@ -341,89 +395,82 @@ def main(metadata,
                                          rp_col=rp_col,
                                          fp_col=fp_col)
     file_stats = {}
-    os.makedirs(output_dir_pre, exist_ok=True)
-    os.makedirs(output_dir_samples, exist_ok=True)
 
-    if type(seqfile1) == str:
-        seqfile1 = [seqfile1]
-    else:
-        seqfile1 = sorted(seqfile1)
-    if type(seqfile2) == str:
-        seqfile2 = [seqfile2]
-    else:
-        seqfile2 = sorted(seqfile2)
+    seqfile1 = get_paths(r1_files)
+    seqfile2 = get_paths(r2_files)
 
+    barcode_type = "concat"
+    # todo: deal with this param. input? or get from metadata?
     if len(set([len(_.pattern) for _ in fb])) == 1:
+        # 根据barcode的长度进行set，有且仅有1个
         length_bc = len(fb[0].pattern)
         if rb:
-            bc = [p1.pattern + p2.pattern for p1, p2 in zip(fb, rb)]
+            # 如果存在reverse barcode
+            bc = [p1.pattern + p2.pattern
+                  for p1, p2 in zip(fb, rb)]
         else:
             bc = [p1.pattern for p1 in fb]
-        all_args = [(demux_files, (seq1,
-                                   seq2,
-                                   fp,
-                                   rp,
-                                   ids,
-                                   bc,
-                                   length_bc,
-                                   output_dir_pre,
-                                   not_overwrite_demux,
-                                   attempt_read_orientation)) for seq1, seq2 in zip(seqfile1, seqfile2)]
-
-        results = assign_work_pool(cal, all_args, num_thread=num_thread)
-        for name, stats in results:
+        for seq1, seq2 in zip(seqfile1, seqfile2):
+            # 大多情况下，只有少数的seqfile，所以我选择把多进程+协程放在demux_files里
+            filebasename = str(os.path.basename(seq1)).split('.')[0]
+            name, stats = demux_files(seqfile1=seq1,
+                                      seqfile2=seq2,
+                                      fp=fp,
+                                      rp=rp,
+                                      ids=ids,
+                                      bc=bc,
+                                      length_bc=length_bc,
+                                      output_dir=output_dir,
+                                      fileid=filebasename,
+                                      attempt_read_orientation=attempt_read_orientation,
+                                      barcode_type=barcode_type,
+                                      num_thread=num_thread)
             file_stats[name] = stats
-
-        print("Start mergeing reads from multiple sampels fastq......")
-        all_sample_files = glob(os.path.join(output_dir_pre,'*','*_1.fastq'))
-        unique_samples_name = set([os.path.basename(_).replace('_1.fastq','') for _ in all_sample_files])
-        # concat start.
-        # rerun it again
-        cmd_template = "cat %s > %s" % (os.path.join(output_dir_pre, '*', '{sid}_{num}.fastq'),
-                                        os.path.join(output_dir_samples, "{sid}_{num}.fastq"))
-        all_args = [(merge_files, (cmd_template,
-                                   sid,
-                                   num,)) for sid, num in itertools.product(unique_samples_name, ['1','2'])]
-        results = assign_work_pool(cal, all_args, num_thread=num_thread)
     else:
         # 多种barcode长度,忽略吧...
         ## 还不知道该咋办...不应该的说
         pass
 
-    return f1_files, f2_files, ids, file_stats
-
+    stats_df = pd.DataFrame.from_dict(file_stats,orient='index')
+    stats_df.index.name = "ori file name"
+    stats_df.to_csv(os.path.join(output_dir,"demux_stats.csv"),index=1)
+    return stats_df
 
 if __name__ == '__main__':
-    from os.path import dirname
-    # path = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/pp/demux.py'
-    metadata = os.path.join(dirname(dirname(root_path)),  'test', 'metadata.tab')
-    id_col = 'SampleID'
-    fb_col = 'Forward_Barcode'
-    rb_col = 'Reverse_Barcode'
-    fp_col = 'Forward_Primer'
-    rp_col = 'Reverse_Primer'
-    seqfile1, seqfile2 = sorted(glob(os.path.join(dirname(dirname(root_path)),
-                                                  'test/seq_data2/test_seq*_1.fastq.gz')
-                                     )), \
-                         sorted(glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz'))
-    # the order of glob output is random, be careful !!!!!!!!!!!!!!!!!!!!!!!!1
-    f1_files, f2_files, ids, stats = main(metadata=metadata,
-                                          id_col=id_col,
-                                          rb_col=rb_col,
-                                          fb_col=fb_col,
-                                          rp_col=rp_col,
-                                          fp_col=fp_col,
-                                          seqfile1=seqfile1,
-                                          seqfile2=seqfile2,
-                                          output_dir_pre='/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_demux/',
-                                          output_dir_samples='/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_samples/',
-                                          attempt_read_orientation=True)
-    for f, s in sorted(stats.items(), key=lambda x: x[0]):
-        print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.keys()))
-        print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.values()))
+    main()
+    # python3 pp/demux.py -m /home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/metadata.tab -o /home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_demux/ -r1 "/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_1.fastq.gz" -r2 "/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz"
+
+    # from os.path import dirname
+    #
+    # # path = '/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/pp/demux.py'
+    # metadata = os.path.join(dirname(dirname(root_path)), 'test', 'metadata.tab')
+    # id_col = 'SampleID'
+    # fb_col = 'Forward_Barcode'
+    # rb_col = 'Reverse_Barcode'
+    # fp_col = 'Forward_Primer'
+    # rp_col = 'Reverse_Primer'
+    # seqfile1, seqfile2 = sorted(glob(os.path.join(dirname(dirname(root_path)),
+    #                                               'test/seq_data2/test_seq*_1.fastq.gz')
+    #                                  )), \
+    #                      sorted(glob('/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz'))
+    # # the order of glob output is random, be careful !!!!!!!!!!!!!!!!!!!!!!!!1
+    # stats = main(metadata=metadata,
+    #              id_col=id_col,
+    #              rb_col=rb_col,
+    #              fb_col=fb_col,
+    #              rp_col=rp_col,
+    #              fp_col=fp_col,
+    #              seqfile1=seqfile1,
+    #              seqfile2=seqfile2,
+    #              output_dir='/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_demux/',
+    #              attempt_read_orientation=True,
+    #              overwrite_demux=True)
+    # for f, s in sorted(stats.items(), key=lambda x: x[0]):
+    #     print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.keys()))
+    #     print('{:>12}  {:>12}  {:>12} {:>12}'.format(*s.values()))
 
     ## performance analysis
-    ## ~5000 read per second per file
+    ## ~15000 read per second per file
 
 #    import cProfile
 #

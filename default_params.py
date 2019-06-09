@@ -40,18 +40,24 @@ demux_stats = os.path.join(demux_dir_pre, '..', 'stats.csv')
 # demux部分
 demux_on = False
 not_overwrite_demux = True
-demux_dict = dict(
-    metadata=os.path.join(_p_dir, 'test', 'metadata.tab'),
-    id_col='SampleID',
-    fb_col='Forward_Barcode',
-    rb_col='Reverse_Barcode',
-    fp_col='Forward_Primer',
-    rp_col='Reverse_Primer',
-    attempt_read_orientation=True,
-    output_dir_pre=demux_dir_pre,
-    output_dir_samples=demux_dir_samples,
-    num_thread=0  # all threads
-)
+id_col = 'SampleID'
+fb_col = 'Forward_Barcode'
+rb_col = 'Reverse_Barcode'
+fp_col = 'Forward_Primer'
+rp_col = 'Reverse_Primer'
+#
+# demux_dict = dict(
+#     metadata=os.path.join(_p_dir, 'test', 'metadata.tab'),
+#     id_col='SampleID',
+#     fb_col='Forward_Barcode',
+#     rb_col='Reverse_Barcode',
+#     fp_col='Forward_Primer',
+#     rp_col='Reverse_Primer',
+#     attempt_read_orientation=True,
+#     output_dir_pre=demux_dir_pre,
+#     output_dir_samples=demux_dir_samples,
+#     num_thread=0  # all threads
+# )
 
 # 序列评估 可视化部分参数
 n = 10000
