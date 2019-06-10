@@ -3,6 +3,10 @@
 ####  20190609
 ####  by tianhua liao
 #################################################################################
+import sys
+from os.path import dirname
+
+sys.path.insert(0, dirname(dirname(__file__)))
 import gzip
 import re
 import os
@@ -279,7 +283,7 @@ def demux_files(seqfile1,
             seqfile1_stream = open(seqfile1, 'r')
             seqfile2_stream = open(seqfile2, 'r')
 
-        params = [(process_pair,
+        params = ((process_pair,
                    dict(read1_data=read1,
                         read2_data=read2,
                         forward_primers=fp,
@@ -288,7 +292,8 @@ def demux_files(seqfile1,
                         attempt_read_orientation=attempt_read_orientation,
                         barcode_type=barcode_type))
                   for read1, read2 in zip(SeqIO.parse(seqfile1_stream, format='fastq'),
-                                               SeqIO.parse(seqfile2_stream, format='fastq'))]
+                                          SeqIO.parse(seqfile2_stream, format='fastq')))
+        # use generator instead of list to avoid memory explosion
         loop = asyncio.new_event_loop()
         # 准备一个协程的事件管理loop
         with mp.Pool(processes=num_thread) as thread_pool:
@@ -410,7 +415,8 @@ def main(metadata,
                   for p1, p2 in zip(fb, rb)]
         else:
             bc = [p1.pattern for p1 in fb]
-        for seq1, seq2 in zip(seqfile1, seqfile2):
+        for seq1, seq2 in zip(seqfile1,
+                              seqfile2):
             # 大多情况下，只有少数的seqfile，所以我选择把多进程+协程放在demux_files里
             filebasename = str(os.path.basename(seq1)).split('.')[0]
             name, stats = demux_files(seqfile1=seq1,
@@ -431,14 +437,15 @@ def main(metadata,
         ## 还不知道该咋办...不应该的说
         pass
 
-    stats_df = pd.DataFrame.from_dict(file_stats,orient='index')
+    stats_df = pd.DataFrame.from_dict(file_stats, orient='index')
     stats_df.index.name = "ori file name"
-    stats_df.to_csv(os.path.join(output_dir,"demux_stats.csv"),index=1)
+    stats_df.to_csv(os.path.join(output_dir, "demux_stats.csv"), index=1)
     return stats_df
+
 
 if __name__ == '__main__':
     main()
-    # python3 pp/demux.py -m /home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/metadata.tab -o /home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_demux/ -r1 "/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_1.fastq.gz" -r2 "/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz"
+    # python3 pp/demux.py -m /home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/metadata.tab -o /home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq2_demux/ -r1 "/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_1.fastq.gz" -r2 "/home/liaoth/data2/16s/qiime2_learn/gpz_16s_pipelines/test/seq_data2/test_seq*_2.fastq.gz" -f -r
 
     # from os.path import dirname
     #
